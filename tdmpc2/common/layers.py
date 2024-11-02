@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tensordict import from_modules
 from copy import deepcopy
+from ipdb import set_trace
 
 class Ensemble(nn.Module):
 	"""
@@ -112,8 +113,15 @@ class NormedLinear(nn.Linear):
 			f"bias={self.bias is not None}{repr_dropout}, "\
 			f"act={self.act.__class__.__name__})"
 
+class SoftmaxWrap(nn.Module):
+	def __init__(self):
+		super().__init__()
+	
+	def forward(self, x):
+		x = torch.nn.functional.softmax(x, dim=-1)
+		return x
 
-def mlp(in_dim, mlp_dims, out_dim, act=None, dropout=0.):
+def mlp(in_dim, mlp_dims, out_dim, act=None, dropout=0., softmax=False):
 	"""
 	Basic building block of TD-MPC2.
 	MLP with LayerNorm, Mish activations, and optionally dropout.
@@ -125,8 +133,22 @@ def mlp(in_dim, mlp_dims, out_dim, act=None, dropout=0.):
 	for i in range(len(dims) - 2):
 		mlp.append(NormedLinear(dims[i], dims[i+1], dropout=dropout*(i==0)))
 	mlp.append(NormedLinear(dims[-2], dims[-1], act=act) if act else nn.Linear(dims[-2], dims[-1]))
+	if softmax:
+		mlp.append(SoftmaxWrap())
 	return nn.Sequential(*mlp)
 
+"""
+def discrete_select(in_dim, mlp_dims, action_dim, out_dim, act=None, dropout=0.):
+	if isinstance(mlp_dims, int):
+		mlp_dims = [mlp_dims]
+	dims = [in_dim] + mlp_dims + [action_dim]
+	mlp = nn.ModuleList()
+	for i in range(len(dims) - 2):
+		mlp.append(NormedLinear(dims[i], dims[i+1], dropout=dropout*(i==0)))
+	mlp.append(NormedLinear(dims[-2], dims[-1], act=act) if act else nn.Linear(dims[-2], dims[-1]))
+	mlp.append(DiscreteSelect())
+	return nn.Sequential(*mlp)
+"""
 
 def conv(in_shape, num_channels, act=None):
 	"""

@@ -5,7 +5,9 @@ import torch.nn as nn
 
 from common import layers, math, init
 from tensordict.nn import TensorDictParams
+from ipdb import set_trace
 
+DISCRETE = True
 class WorldModel(nn.Module):
 	"""
 	TD-MPC2 implicit world model architecture.
@@ -20,11 +22,18 @@ class WorldModel(nn.Module):
 			self.register_buffer("_action_masks", torch.zeros(len(cfg.tasks), cfg.action_dim))
 			for i in range(len(cfg.tasks)):
 				self._action_masks[i, :cfg.action_dims[i]] = 1.
+
+		DISCRETE_N = 2
 		self._encoder = layers.enc(cfg)
 		self._dynamics = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.latent_dim, act=layers.SimNorm(cfg))
 		self._reward = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1))
-		self._pi = layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], 2*cfg.action_dim)
-		self._Qs = layers.Ensemble([layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1), dropout=cfg.dropout) for _ in range(cfg.num_q)])
+		if not DISCRETE:
+			self._pi = layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], 2*cfg.action_dim)
+			self._Qs = layers.Ensemble([layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1), dropout=cfg.dropout) for _ in range(cfg.num_q)])
+		else:
+			self._pi = layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], DISCRETE_N) #DM: Discrete-SAC Change #2-1
+			self._Qs = layers.Ensemble([layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1), dropout=cfg.dropout) for _ in range(cfg.num_q)]) #DM: Discrete-SAC Change 1-1
+		
 		self.apply(init.weight_init)
 		init.zero_([self._reward[-1].weight, self._Qs.params["2", "weight"]])
 
@@ -109,6 +118,7 @@ class WorldModel(nn.Module):
 		"""
 		if self.cfg.multitask:
 			z = self.task_emb(z, task)
+
 		z = torch.cat([z, a], dim=-1)
 		return self._dynamics(z)
 
@@ -127,27 +137,36 @@ class WorldModel(nn.Module):
 		The policy prior is a Gaussian distribution with
 		mean and (log) std predicted by a neural network.
 		"""
+
 		if self.cfg.multitask:
 			z = self.task_emb(z, task)
 
-		# Gaussian policy prior
-		mu, log_std = self._pi(z).chunk(2, dim=-1)
-		log_std = math.log_std(log_std, self.log_std_min, self.log_std_dif)
-		eps = torch.randn_like(mu)
+		
+		if not DISCRETE: #DISABLING FOR NOW--ORIGINALLY FOR NON-DISCRETE
+			# Gaussian policy prior
+			#self._pi.shape = [3,256,2] #C-SHAPE
+			mu, log_std = self._pi(z).chunk(2, dim=-1) #C-SHAPE (Pend): [3,256,1]
+			log_std = math.log_std(log_std, self.log_std_min, self.log_std_dif)
+			eps = torch.randn_like(mu)
 
-		if self.cfg.multitask: # Mask out unused action dimensions
-			mu = mu * self._action_masks[task]
-			log_std = log_std * self._action_masks[task]
-			eps = eps * self._action_masks[task]
-			action_dims = self._action_masks.sum(-1)[task].unsqueeze(-1)
-		else: # No masking
-			action_dims = None
+			if self.cfg.multitask: # Mask out unused action dimensions
+				mu = mu * self._action_masks[task]
+				log_std = log_std * self._action_masks[task]
+				eps = eps * self._action_masks[task]
+				action_dims = self._action_masks.sum(-1)[task].unsqueeze(-1)
+			else: # No masking
+				action_dims = None
 
-		log_pi = math.gaussian_logprob(eps, log_std, size=action_dims)
-		pi = mu + eps * log_std.exp()
-		mu, pi, log_pi = math.squash(mu, pi, log_pi)
+			log_pi = math.gaussian_logprob(eps, log_std, size=action_dims)
+			pi = mu + eps * log_std.exp()
+			mu, pi, log_pi = math.squash(mu, pi, log_pi)
 
-		return mu, pi, log_pi, log_std
+			return mu, pi, log_pi, log_std
+		else:
+			pi = self._pi(z)
+			actions = torch.argmax(torch.nn.functional.softmax(pi,dim=-1), dim=-1, keepdim=True) #DM: Discrete SAC Change #2-2
+
+			return actions, pi, torch.log(pi)
 
 	def Q(self, z, a, task, return_type='min', target=False, detach=False):
 		"""
@@ -163,14 +182,19 @@ class WorldModel(nn.Module):
 		if self.cfg.multitask:
 			z = self.task_emb(z, task)
 
-		z = torch.cat([z, a], dim=-1)
+
+		#DM: orig shape of z for continuous (pendulum): [3,256,512]
+		#DM: orig shape fo a for continuous (pendulum): [3, 256, 1]
+		z = torch.cat([z, a], dim=-1) #ORIGINAL
+		#DM: new shape of z for continuous (pendulum)e: [3,256,513]
 		if target:
 			qnet = self._target_Qs
 		elif detach:
 			qnet = self._detach_Qs
 		else:
 			qnet = self._Qs
-		out = qnet(z)
+			
+		out = qnet(z) #DM: z-shape for continuous: [3,256,513]
 
 		if return_type == 'all':
 			return out
@@ -180,3 +204,9 @@ class WorldModel(nn.Module):
 		if return_type == "min":
 			return Q.min(0).values
 		return Q.sum(0) / 2
+	
+def replace_column_with_argmax(tensor, dim):
+    """Replace a column in a multi-dimensional tensor with the argmax values along a specified dimension."""
+
+    argmax_values = torch.argmax(tensor, dim=dim, keepdim=True)
+    return torch.cat([argmax_values, tensor[:, 1:]], dim=1)

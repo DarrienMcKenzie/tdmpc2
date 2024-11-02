@@ -26,6 +26,10 @@ try:
 	from envs.myosuite import make_env as make_myosuite_env
 except:
 	make_myosuite_env = missing_dependencies
+try: #DM-Change
+	from envs.generic import make_env as make_generic_env
+except:
+	make_generic_env = missing_dependencies
 
 
 warnings.filterwarnings('ignore', category=DeprecationWarning)
@@ -56,13 +60,15 @@ def make_env(cfg):
 	"""
 	Make an environment for TD-MPC2 experiments.
 	"""
+	print("CFG:")
+	print(cfg)
 	gym.logger.set_level(40)
 	if cfg.multitask:
 		env = make_multitask_env(cfg)
 
 	else:
 		env = None
-		for fn in [make_dm_control_env, make_maniskill_env, make_metaworld_env, make_myosuite_env]:
+		for fn in [make_dm_control_env, make_maniskill_env, make_metaworld_env, make_myosuite_env, make_generic_env]:
 			try:
 				env = fn(cfg)
 			except ValueError:
@@ -76,7 +82,19 @@ def make_env(cfg):
 		cfg.obs_shape = {k: v.shape for k, v in env.observation_space.spaces.items()}
 	except: # Box
 		cfg.obs_shape = {cfg.get('obs', 'state'): env.observation_space.shape}
-	cfg.action_dim = env.action_space.shape[0]
-	cfg.episode_length = env.max_episode_steps
+	print("ACTION SHAPE:", env.action_space.shape)
+	print("ACTION SPACE:", env.action_space)
+	try:
+		cfg.action_dim = env.action_space.shape[0]
+	except:
+		print("OVERRIDE (ASSUMED DISCRETE), ACTIONS_DIM=1")
+		cfg.action_dim = 1
+
+	#DM-Change
+	try:
+		cfg.episode_length = env.max_episode_steps
+	except:
+		print("EPISODE LENGTH ATTRIBUTE MISSING--OVERRIDE")
+		cfg.episode_length = int(input("The environment selected does not have a default step limit per episode. Please provide this value (integer): "))
 	cfg.seed_steps = max(1000, 5*cfg.episode_length)
 	return env

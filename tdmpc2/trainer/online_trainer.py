@@ -4,8 +4,9 @@ import numpy as np
 import torch
 from tensordict.tensordict import TensorDict
 from trainer.base import Trainer
+from ipdb import set_trace
 
-
+DISCRETE = True
 class OnlineTrainer(Trainer):
 	"""Trainer class for single-task online TD-MPC2 training."""
 
@@ -31,8 +32,8 @@ class OnlineTrainer(Trainer):
 			if self.cfg.save_video:
 				self.logger.video.init(self.env, enabled=(i==0))
 			while not done:
-				torch.compiler.cudagraph_mark_step_begin()
-				action = self.agent.act(obs, t0=t==0, eval_mode=True)
+				#action = self.agent.act(obs, t0=t==0, eval_mode=True) #ORIGINAL
+				action = self.env.rand_act() #DM-TEMP
 				obs, reward, done, info = self.env.step(action)
 				ep_reward += reward
 				t += 1
@@ -50,18 +51,26 @@ class OnlineTrainer(Trainer):
 	def to_td(self, obs, action=None, reward=None):
 		"""Creates a TensorDict for a new episode."""
 		if isinstance(obs, dict):
+			print("ORIGINAL OBS IS DICT")
 			obs = TensorDict(obs, batch_size=(), device='cpu')
 		else:
 			obs = obs.unsqueeze(0).cpu()
+		
 		if action is None:
-			action = torch.full_like(self.env.rand_act(), float('nan'))
+			#DM-MODIFIED
+			if not DISCRETE:
+				action = torch.full_like(self.env.rand_act(), float('nan')) #ORIGINAL
+			else:
+				action = torch.Tensor((self.env.rand_act(),))
+				
 		if reward is None:
 			reward = torch.tensor(float('nan'))
+			
 		td = TensorDict(
 			obs=obs,
-			action=action.unsqueeze(0),
+			action=action.unsqueeze(0), #ORIGINAL
 			reward=reward.unsqueeze(0),
-		batch_size=(1,))
+			batch_size=(1,)) #ORIGINAL BATCH_SIZE=(1,)
 		return td
 
 	def train(self):
@@ -94,11 +103,23 @@ class OnlineTrainer(Trainer):
 
 			# Collect experience
 			if self._step > self.cfg.seed_steps:
-				action = self.agent.act(obs, t0=len(self._tds)==1)
+				action = self.agent.act(obs, t0=len(self._tds)==1) #ORIGINAL
+				action = torch.argmax(torch.nn.functional.softmax(action))
+				#print("DELIBERATE ACTION")
+				#set_trace()
 			else:
 				action = self.env.rand_act()
-			obs, reward, done, info = self.env.step(action)
-			self._tds.append(self.to_td(obs, action, reward))
+				#if DISCRETE:
+				#	action = torch.tensor((action,))
+			obs, reward, done, info = self.env.step(int(action)) #DM: brute force test...
+
+			#DM-MOD
+			if DISCRETE:
+				#print("ACTION-2: ", action)
+				action = torch.tensor((action,))
+			#DM-MODIFIED
+
+			self._tds.append(self.to_td(obs, action, reward)) #ORIGINAL #DM: BRUTE FORCE TESTING
 
 			# Update agent
 			if self._step >= self.cfg.seed_steps:
@@ -107,6 +128,7 @@ class OnlineTrainer(Trainer):
 					print('Pretraining agent on seed data...')
 				else:
 					num_updates = 1
+				#DM: Policy update entry point
 				for _ in range(num_updates):
 					_train_metrics = self.agent.update(self.buffer)
 				train_metrics.update(_train_metrics)

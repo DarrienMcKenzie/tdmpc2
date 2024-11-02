@@ -5,8 +5,9 @@ from common import math
 from common.scale import RunningScale
 from common.world_model import WorldModel
 from tensordict import TensorDict
+from ipdb import set_trace
 
-
+DISCRETE = True
 class TDMPC2(torch.nn.Module):
 	"""
 	TD-MPC2 agent. Implements training + inference.
@@ -104,9 +105,10 @@ class TDMPC2(torch.nn.Module):
 			task = torch.tensor([task], device=self.device)
 		if self.cfg.mpc:
 			a = self.plan(obs, t0=t0, eval_mode=eval_mode, task=task)
-		else:
+		else: #DM: Entry point
 			z = self.model.encode(obs, task)
-			a = self.model.pi(z, task)[int(not eval_mode)][0]
+			#print("EVAL MODE = ", eval_mode)
+			a = self.model.pi(z, task)[int(not eval_mode)][0] #ORIGINAL
 		return a.cpu()
 
 	@torch.no_grad()
@@ -201,19 +203,33 @@ class TDMPC2(torch.nn.Module):
 
 		Returns:
 			float: Loss of the policy update.
-		"""
-		_, pis, log_pis, _ = self.model.pi(zs, task)
-		qs = self.model.Q(zs, pis, task, return_type='avg', detach=True)
-		self.scale.update(qs[0])
-		qs = self.scale(qs)
+		""" 
+		if not DISCRETE:
+			_, pis, log_pis, _ = self.model.pi(zs, task)
+			qs = self.model.Q(zs, pis, task, return_type='avg', detach=True)
+			self.scale.update(qs[0])
+			qs = self.scale(qs)
 
-		# Loss is a weighted sum of Q-values
-		rho = torch.pow(self.cfg.rho, torch.arange(len(qs), device=self.device))
-		pi_loss = ((self.cfg.entropy_coef * log_pis - qs).mean(dim=(1,2)) * rho).mean()
-		pi_loss.backward()
-		pi_grad_norm = torch.nn.utils.clip_grad_norm_(self.model._pi.parameters(), self.cfg.grad_clip_norm)
-		self.pi_optim.step()
-		self.pi_optim.zero_grad(set_to_none=True)
+			# Loss is a weighted sum of Q-values
+			rho = torch.pow(self.cfg.rho, torch.arange(len(qs), device=self.device))
+			pi_loss = ((self.cfg.entropy_coef * log_pis - qs).mean(dim=(1,2)) * rho).mean()
+			pi_loss.backward()
+			pi_grad_norm = torch.nn.utils.clip_grad_norm_(self.model._pi.parameters(), self.cfg.grad_clip_norm)
+			self.pi_optim.step()
+			self.pi_optim.zero_grad(set_to_none=True)
+		else:
+			action, pis, log_pis = self.model.pi(zs, task)
+			qs = self.model.Q(zs, action, task, return_type='avg', detach=True)
+			self.scale.update(qs[0])
+			qs = self.scale(qs)
+
+			# Loss is a weighted sum of Q-values
+			rho = torch.pow(self.cfg.rho, torch.arange(len(qs), device=self.device))
+			pi_loss = ((self.cfg.entropy_coef * log_pis - qs).mean(dim=(1,2)) * rho).mean() #DM: Discrete SAC Change #3 (do we need to change it, here?)
+			pi_loss.backward()
+			pi_grad_norm = torch.nn.utils.clip_grad_norm_(self.model._pi.parameters(), self.cfg.grad_clip_norm)
+			self.pi_optim.step()
+			self.pi_optim.zero_grad(set_to_none=True)
 
 		return pi_loss.detach(), pi_grad_norm
 
@@ -230,7 +246,11 @@ class TDMPC2(torch.nn.Module):
 		Returns:
 			torch.Tensor: TD-target.
 		"""
-		pi = self.model.pi(next_z, task)[1]
+		if not DISCRETE:
+			pi = self.model.pi(next_z, task)[1] #ORIGINAL
+		else:
+			pi = self.model.pi(next_z, task)[0] #redundant change?
+
 		discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
 		return reward + discount * self.model.Q(next_z, pi, task, return_type='min', target=True)
 
@@ -239,7 +259,6 @@ class TDMPC2(torch.nn.Module):
 		with torch.no_grad():
 			next_z = self.model.encode(obs[1:], task)
 			td_targets = self._td_target(next_z, reward, task)
-
 		# Prepare for update
 		self.model.train()
 
@@ -249,7 +268,7 @@ class TDMPC2(torch.nn.Module):
 		zs[0] = z
 		consistency_loss = 0
 		for t, (_action, _next_z) in enumerate(zip(action.unbind(0), next_z.unbind(0))):
-			z = self.model.next(z, _action, task)
+			z = self.model.next(z, _action, task) 
 			consistency_loss = consistency_loss + F.mse_loss(z, _next_z) * self.cfg.rho**t
 			zs[t+1] = z
 
@@ -310,6 +329,7 @@ class TDMPC2(torch.nn.Module):
 			dict: Dictionary of training statistics.
 		"""
 		obs, action, reward, task = buffer.sample()
+
 		kwargs = {}
 		if task is not None:
 			kwargs["task"] = task
