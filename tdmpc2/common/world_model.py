@@ -2,6 +2,7 @@ from copy import deepcopy
 
 import torch
 import torch.nn as nn
+from torch.distributions import Categorical
 
 from common import layers, math, init
 from tensordict.nn import TensorDictParams
@@ -131,13 +132,12 @@ class WorldModel(nn.Module):
 		z = torch.cat([z, a], dim=-1)
 		return self._reward(z)
 
-	def pi(self, z, task):
+	def pi(self, z, task): #DM: Ideally: remove batch parameter... (it's temporary)
 		"""
 		Samples an action from the policy prior.
 		The policy prior is a Gaussian distribution with
 		mean and (log) std predicted by a neural network.
 		"""
-
 		if self.cfg.multitask:
 			z = self.task_emb(z, task)
 
@@ -162,11 +162,19 @@ class WorldModel(nn.Module):
 			mu, pi, log_pi = math.squash(mu, pi, log_pi)
 
 			return mu, pi, log_pi, log_std
-		else:
-			pi = self._pi(z)
-			actions = torch.argmax(torch.nn.functional.softmax(pi,dim=-1), dim=-1, keepdim=True) #DM: Discrete SAC Change #2-2
+		else: #DM: Discrete SAC Change #2-2
+			logits = self._pi(z)
+			policy_dist = Categorical(logits=logits)
+			a1 = policy_dist.sample()
 
-			return actions, pi, torch.log(pi)
+			if len(a1.shape)==2: #DM: handling batched embeddings; temporary fix due to distributions.category nuances
+				actions = torch.reshape(a1, (a1.shape[0], a1.shape[1], 1))
+			elif len(a1.shape)==1: #DM: handling case in which a single embedding is passed
+				actions = a1
+			action_probs = policy_dist.probs
+			log_probs = torch.nn.functional.log_softmax(logits, dim=-1)
+
+			return actions, action_probs, log_probs
 
 	def Q(self, z, a, task, return_type='min', target=False, detach=False):
 		"""
@@ -182,10 +190,12 @@ class WorldModel(nn.Module):
 		if self.cfg.multitask:
 			z = self.task_emb(z, task)
 
-
 		#DM: orig shape of z for continuous (pendulum): [3,256,512]
 		#DM: orig shape fo a for continuous (pendulum): [3, 256, 1]
-		z = torch.cat([z, a], dim=-1) #ORIGINAL
+		z = torch.cat([z, a], dim=-1) #DM: ORIGINAL
+		#z1 = torch.cat([z,0], dim=-1)
+		#z2 = torch.cat([z,1], dim=-1))
+		#DM: change the layers... don't need to batch?: [HORIZON, ALL_N_AVAILABLE_ACTIONS, PARTICULAR ACTION]
 		#DM: new shape of z for continuous (pendulum)e: [3,256,513]
 		if target:
 			qnet = self._target_Qs
@@ -195,6 +205,8 @@ class WorldModel(nn.Module):
 			qnet = self._Qs
 			
 		out = qnet(z) #DM: z-shape for continuous: [3,256,513]
+		#z1 -> qnet(z1)
+		#z2 -> qnet(z2) 
 
 		if return_type == 'all':
 			return out
@@ -204,9 +216,3 @@ class WorldModel(nn.Module):
 		if return_type == "min":
 			return Q.min(0).values
 		return Q.sum(0) / 2
-	
-def replace_column_with_argmax(tensor, dim):
-    """Replace a column in a multi-dimensional tensor with the argmax values along a specified dimension."""
-
-    argmax_values = torch.argmax(tensor, dim=dim, keepdim=True)
-    return torch.cat([argmax_values, tensor[:, 1:]], dim=1)

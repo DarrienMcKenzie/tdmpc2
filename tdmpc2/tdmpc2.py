@@ -107,8 +107,7 @@ class TDMPC2(torch.nn.Module):
 			a = self.plan(obs, t0=t0, eval_mode=eval_mode, task=task)
 		else: #DM: Entry point
 			z = self.model.encode(obs, task)
-			#print("EVAL MODE = ", eval_mode)
-			a = self.model.pi(z, task)[int(not eval_mode)][0] #ORIGINAL
+			a = self.model.pi(z, task)[0] #ORIGINAL
 		return a.cpu()
 
 	@torch.no_grad()
@@ -225,7 +224,7 @@ class TDMPC2(torch.nn.Module):
 
 			# Loss is a weighted sum of Q-values
 			rho = torch.pow(self.cfg.rho, torch.arange(len(qs), device=self.device))
-			pi_loss = ((self.cfg.entropy_coef * log_pis - qs).mean(dim=(1,2)) * rho).mean() #DM: Discrete SAC Change #3 (do we need to change it, here?)
+			pi_loss = ((self.cfg.entropy_coef * log_pis - qs).mean(dim=(1,2)) * rho).mean() #DM: Discrete SAC Change #3
 			pi_loss.backward()
 			pi_grad_norm = torch.nn.utils.clip_grad_norm_(self.model._pi.parameters(), self.cfg.grad_clip_norm)
 			self.pi_optim.step()
@@ -249,7 +248,7 @@ class TDMPC2(torch.nn.Module):
 		if not DISCRETE:
 			pi = self.model.pi(next_z, task)[1] #ORIGINAL
 		else:
-			pi = self.model.pi(next_z, task)[0] #redundant change?
+			pi = self.model.pi(next_z, task)[0] #DM: Discrete
 
 		discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
 		return reward + discount * self.model.Q(next_z, pi, task, return_type='min', target=True)

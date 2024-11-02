@@ -103,19 +103,19 @@ class OnlineTrainer(Trainer):
 
 			# Collect experience
 			if self._step > self.cfg.seed_steps:
-				action = self.agent.act(obs, t0=len(self._tds)==1) #ORIGINAL
-				action = torch.argmax(torch.nn.functional.softmax(action))
 				#print("DELIBERATE ACTION")
+				action = self.agent.act(obs, t0=len(self._tds)==1) #ORIGINAL
+				#action = torch.argmax(torch.nn.functional.softmax(action))
 				#set_trace()
 			else:
 				action = self.env.rand_act()
+				#print("RANDOM ACTION")
 				#if DISCRETE:
 				#	action = torch.tensor((action,))
 			obs, reward, done, info = self.env.step(int(action)) #DM: brute force test...
 
 			#DM-MOD
 			if DISCRETE:
-				#print("ACTION-2: ", action)
 				action = torch.tensor((action,))
 			#DM-MODIFIED
 
