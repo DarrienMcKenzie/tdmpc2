@@ -250,6 +250,7 @@ class TDMPC2(torch.nn.Module):
 		else:
 			pi = self.model.pi(next_z, task)[0] #DM: Discrete
 
+		#set_trace()
 		discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
 		return reward + discount * self.model.Q(next_z, pi, task, return_type='min', target=True)
 
@@ -281,7 +282,10 @@ class TDMPC2(torch.nn.Module):
 		for t, (rew_pred_unbind, rew_unbind, td_targets_unbind, qs_unbind) in enumerate(zip(reward_preds.unbind(0), reward.unbind(0), td_targets.unbind(0), qs.unbind(1))):
 			reward_loss = reward_loss + math.soft_ce(rew_pred_unbind, rew_unbind, self.cfg).mean() * self.cfg.rho**t
 			for _, qs_unbind_unbind in enumerate(qs_unbind.unbind(0)):
-				value_loss = value_loss + math.soft_ce(qs_unbind_unbind, td_targets_unbind, self.cfg).mean() * self.cfg.rho**t
+				if not DISCRETE: #DM: Discrete-SAC Change #3
+					value_loss = value_loss + math.soft_ce(qs_unbind_unbind, td_targets_unbind, self.cfg).mean() * self.cfg.rho**t
+				else:
+					value_loss = 0
 
 		consistency_loss = consistency_loss / self.cfg.horizon
 		reward_loss = reward_loss / self.cfg.horizon
@@ -299,7 +303,8 @@ class TDMPC2(torch.nn.Module):
 		self.optim.zero_grad(set_to_none=True)
 
 		# Update policy
-		pi_loss, pi_grad_norm = self.update_pi(zs.detach(), task)
+		#pi_loss, pi_grad_norm = self.update_pi(zs.detach(), task) #DM: Testing...
+		pi_loss, pi_grad_norm = 0.0, 0.0
 
 		# Update target Q-functions
 		self.model.soft_update_target_Q()

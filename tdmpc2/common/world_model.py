@@ -33,7 +33,7 @@ class WorldModel(nn.Module):
 			self._Qs = layers.Ensemble([layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1), dropout=cfg.dropout) for _ in range(cfg.num_q)])
 		else:
 			self._pi = layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], DISCRETE_N) #DM: Discrete-SAC Change #2-1
-			self._Qs = layers.Ensemble([layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1), dropout=cfg.dropout) for _ in range(cfg.num_q)]) #DM: Discrete-SAC Change 1-1
+			self._Qs = layers.Ensemble([layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], DISCRETE_N, dropout=cfg.dropout) for _ in range(cfg.num_q)]) #DM: Discrete-SAC Change 1-1
 		
 		self.apply(init.weight_init)
 		init.zero_([self._reward[-1].weight, self._Qs.params["2", "weight"]])
@@ -192,9 +192,8 @@ class WorldModel(nn.Module):
 
 		#DM: orig shape of z for continuous (pendulum): [3,256,512]
 		#DM: orig shape fo a for continuous (pendulum): [3, 256, 1]
-		z = torch.cat([z, a], dim=-1) #DM: ORIGINAL
-		#z1 = torch.cat([z,0], dim=-1)
-		#z2 = torch.cat([z,1], dim=-1))
+		if not DISCRETE:
+			z = torch.cat([z, a], dim=-1) #DM: ORIGINAL
 		#DM: change the layers... don't need to batch?: [HORIZON, ALL_N_AVAILABLE_ACTIONS, PARTICULAR ACTION]
 		#DM: new shape of z for continuous (pendulum)e: [3,256,513]
 		if target:
@@ -212,7 +211,13 @@ class WorldModel(nn.Module):
 			return out
 
 		qidx = torch.randperm(self.cfg.num_q, device=out.device)[:2]
-		Q = math.two_hot_inv(out[qidx], self.cfg)
+		#out[qidx].shape = [2,3,256,101]
+
+		if not DISCRETE:
+			Q = math.two_hot_inv(out[qidx], self.cfg) #shape (w/o discrete mod): [2,3,256,1]
+		else:
+			Q = out[qidx]
+		#Q.sum(0).shape = [3,256,1]
 		if return_type == "min":
 			return Q.min(0).values
 		return Q.sum(0) / 2
