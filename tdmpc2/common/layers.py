@@ -137,18 +137,6 @@ def mlp(in_dim, mlp_dims, out_dim, act=None, dropout=0., softmax=False):
 		mlp.append(SoftmaxWrap())
 	return nn.Sequential(*mlp)
 
-"""
-def discrete_select(in_dim, mlp_dims, action_dim, out_dim, act=None, dropout=0.):
-	if isinstance(mlp_dims, int):
-		mlp_dims = [mlp_dims]
-	dims = [in_dim] + mlp_dims + [action_dim]
-	mlp = nn.ModuleList()
-	for i in range(len(dims) - 2):
-		mlp.append(NormedLinear(dims[i], dims[i+1], dropout=dropout*(i==0)))
-	mlp.append(NormedLinear(dims[-2], dims[-1], act=act) if act else nn.Linear(dims[-2], dims[-1]))
-	mlp.append(DiscreteSelect())
-	return nn.Sequential(*mlp)
-"""
 
 def conv(in_shape, num_channels, act=None):
 	"""

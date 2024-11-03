@@ -9,6 +9,7 @@ from tensordict.nn import TensorDictParams
 from ipdb import set_trace
 
 DISCRETE = True
+DISCRETE_N = 2
 class WorldModel(nn.Module):
 	"""
 	TD-MPC2 implicit world model architecture.
@@ -24,7 +25,7 @@ class WorldModel(nn.Module):
 			for i in range(len(cfg.tasks)):
 				self._action_masks[i, :cfg.action_dims[i]] = 1.
 
-		DISCRETE_N = 2
+
 		self._encoder = layers.enc(cfg)
 		self._dynamics = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.latent_dim, act=layers.SimNorm(cfg))
 		self._reward = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1))

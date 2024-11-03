@@ -4,7 +4,7 @@ import gym
 import numpy as np
 import torch
 
-
+DISCRETE = True
 class TensorWrapper(gym.Wrapper):
 	"""
 	Wrapper for converting numpy arrays to torch tensors.
@@ -39,10 +39,9 @@ class TensorWrapper(gym.Wrapper):
 
 	def step(self, action):
 		#DM-MODIFIED
-		try:
+		if not DISCRETE:
 			action = action.numpy()	
-		except:
-			pass
+
 		obs, reward, done, info = self.env.step(action)
 		info = defaultdict(float, info)
 		info['success'] = float(info['success'])

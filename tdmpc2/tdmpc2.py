@@ -224,7 +224,7 @@ class TDMPC2(torch.nn.Module):
 
 			# Loss is a weighted sum of Q-values
 			rho = torch.pow(self.cfg.rho, torch.arange(len(qs), device=self.device))
-			pi_loss = ((self.cfg.entropy_coef * log_pis - qs).mean(dim=(1,2)) * rho).mean() #DM: Discrete SAC Change #3
+			pi_loss = torch.bmm(pis,(self.cfg.entropy_coef * log_pis - qs).transpose(1,2)).mean() #DM: Discrete-SAC Change #4
 			pi_loss.backward()
 			pi_grad_norm = torch.nn.utils.clip_grad_norm_(self.model._pi.parameters(), self.cfg.grad_clip_norm)
 			self.pi_optim.step()
@@ -284,10 +284,14 @@ class TDMPC2(torch.nn.Module):
 				if not DISCRETE: #DM: Discrete-SAC Change #3
 					value_loss = value_loss + math.soft_ce(qs_unbind_unbind, td_targets_unbind, self.cfg).mean() * self.cfg.rho**t
 				else:
-					#set_trace()
-					value_loss = value_loss + torch.mean(self.model.pi(_zs, task)[t]*((qs_unbind_unbind - td_targets_unbind).mean() * self.cfg.rho**t))
-					#set_trace()
-					#value_loss = 0 #DM: Testing; supressing critic loss...
+					#DM: below needs to be a scalar... likely summing and/or taking the mean incorrectly; but it runs
+					#DM: original difference is MSE (used in sac_atari.py)... but raw difference does better on cartpole? why?
+					#DM: need to modify math.soft_ce loss for new Q function? using raw diff for now
+					#DM: need to also matmul instead of *, since * is element-wise (running into shape issues, there)
+					#DM: indexing self.mode.pi(...) is incorrect... yet "fixing it" reduces performance on cartpole?
+					value_loss = value_loss + torch.mean(self.model.pi(_zs, task)[t]
+										  *(((qs_unbind_unbind - td_targets_unbind)).sum(-1, keepdim=True) * self.cfg.rho**t)) #"running" on discrete
+
 
 		consistency_loss = consistency_loss / self.cfg.horizon
 		reward_loss = reward_loss / self.cfg.horizon
@@ -305,8 +309,8 @@ class TDMPC2(torch.nn.Module):
 		self.optim.zero_grad(set_to_none=True)
 
 		# Update policy
-		#pi_loss, pi_grad_norm = self.update_pi(zs.detach(), task) #DM: Testing...
-		pi_loss, pi_grad_norm = 0.0, 0.0 #DM: FOR TESTING ONLY--SUPRESSING ACTOR_LOSS
+		pi_loss, pi_grad_norm = self.update_pi(zs.detach(), task) #DM: Testing...
+		#pi_loss, pi_grad_norm = 0.0, 0.0 #DM: FOR TESTING ONLY--SUPRESSING ACTOR_LOSS
 
 		# Update target Q-functions
 		self.model.soft_update_target_Q()
