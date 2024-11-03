@@ -250,7 +250,6 @@ class TDMPC2(torch.nn.Module):
 		else:
 			pi = self.model.pi(next_z, task)[0] #DM: Discrete
 
-		#set_trace()
 		discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
 		return reward + discount * self.model.Q(next_z, pi, task, return_type='min', target=True)
 
@@ -285,7 +284,10 @@ class TDMPC2(torch.nn.Module):
 				if not DISCRETE: #DM: Discrete-SAC Change #3
 					value_loss = value_loss + math.soft_ce(qs_unbind_unbind, td_targets_unbind, self.cfg).mean() * self.cfg.rho**t
 				else:
-					value_loss = 0
+					#set_trace()
+					value_loss = value_loss + torch.mean(self.model.pi(_zs, task)[t]*((qs_unbind_unbind - td_targets_unbind).mean() * self.cfg.rho**t))
+					#set_trace()
+					#value_loss = 0 #DM: Testing; supressing critic loss...
 
 		consistency_loss = consistency_loss / self.cfg.horizon
 		reward_loss = reward_loss / self.cfg.horizon
@@ -304,7 +306,7 @@ class TDMPC2(torch.nn.Module):
 
 		# Update policy
 		#pi_loss, pi_grad_norm = self.update_pi(zs.detach(), task) #DM: Testing...
-		pi_loss, pi_grad_norm = 0.0, 0.0
+		pi_loss, pi_grad_norm = 0.0, 0.0 #DM: FOR TESTING ONLY--SUPRESSING ACTOR_LOSS
 
 		# Update target Q-functions
 		self.model.soft_update_target_Q()
