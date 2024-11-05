@@ -1,4 +1,4 @@
-name: tdmpc2
+name: graph
 channels:
   - pytorch-nightly
   - nvidia

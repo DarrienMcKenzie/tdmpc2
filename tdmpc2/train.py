@@ -1,8 +1,9 @@
 import os
-os.environ['MUJOCO_GL'] = 'egl'
+# os.environ['MUJOCO_GL'] = 'egl'
 os.environ['LAZY_LEGACY_OP'] = '0'
 os.environ['TORCHDYNAMO_INLINE_INBUILT_NN_MODULES'] = "1"
 os.environ['TORCH_LOGS'] = "+recompiles"
+# os.environ['PYOPENGL_PLATFORM'] = 'egl'
 import warnings
 warnings.filterwarnings('ignore')
 import torch
@@ -55,7 +56,7 @@ def cfg_to_dataclass(cfg, frozen=False):
 	dataclass.get = get
 	return dataclass()
 
-@hydra.main(config_name='config', config_path='.')
+@hydra.main(config_name='config_simple', config_path='.')
 def train(cfg: dict):
 	"""
 	Script for training single-task / multi-task TD-MPC2 agents.
@@ -80,10 +81,13 @@ def train(cfg: dict):
 	cfg = parse_cfg(cfg)
 	set_seed(cfg.seed)
 	print(colored('Work dir:', 'yellow', attrs=['bold']), cfg.work_dir)
+	print("CFG: ", cfg)
 
 	trainer_cls = OfflineTrainer if cfg.multitask else OnlineTrainer
 
 	cfg = cfg_to_dataclass(cfg)
+
+	cfg.exp_name = cfg.exp_name + f'_{cfg.action_mode}_{cfg.optimizer}'
 
 	trainer = trainer_cls(
 		cfg=cfg,

@@ -4,21 +4,29 @@ import gym
 import numpy as np
 import torch
 
-DISCRETE = True
+
 class TensorWrapper(gym.Wrapper):
 	"""
 	Wrapper for converting numpy arrays to torch tensors.
 	"""
 
-	def __init__(self, env):
+	def __init__(self, env, cfg=None):
 		super().__init__(env)
+		self.action_mode = cfg.get('action_mode', 'category')
 	
 	def rand_act(self):
-		action = self.action_space.sample()
-		if type(action) is not int:
-			action = torch.from_numpy(self.action_space.sample().astype(np.float32))
-		return action
-		#return torch.from_numpy(self.action_space.sample().astype(np.float32)) #ORIGINAL
+		if self.action_mode == 'category':
+			#generate random distribution over actions number
+			act_probs = np.random.rand(self.action_space.n)
+			return torch.tensor(act_probs.astype(np.float32))
+
+		sample = [self.action_space.sample()]
+		sample = np.array(sample)
+		# Convert to tensor
+		if sample.ndim == 2:
+			sample = sample[0]
+
+		return torch.from_numpy(sample.astype(np.float32))
 
 	def _try_f32_tensor(self, x):
 		x = torch.from_numpy(x)
@@ -38,10 +46,11 @@ class TensorWrapper(gym.Wrapper):
 		return self._obs_to_tensor(self.env.reset())
 
 	def step(self, action):
-		#DM-MODIFIED
-		if not DISCRETE:
-			action = action.numpy()	
-
+		if self.action_mode == "discrete":
+			action = int(action[0])
+		else:
+			action = action.numpy()
+	
 		obs, reward, done, info = self.env.step(action)
 		info = defaultdict(float, info)
 		info['success'] = float(info['success'])
