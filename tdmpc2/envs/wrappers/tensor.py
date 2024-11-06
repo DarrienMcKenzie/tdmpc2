@@ -47,6 +47,8 @@ class TensorWrapper(gym.Wrapper):
 
 	def step(self, action):
 		if self.action_mode == "discrete":
+			#action = int(action.argmax())
+			#BEFORE ENC_ACTION CHANGE
 			if not CRITIC_ONLY:
 				action = int(action[0])
 			else:

@@ -6,6 +6,7 @@ from torch.distributions import Categorical
 
 from common import layers, math, init
 from tensordict.nn import TensorDictParams
+import torch.nn.functional as F
 from ipdb import set_trace
 
 class WorldModelDiscrete(nn.Module):
@@ -23,10 +24,14 @@ class WorldModelDiscrete(nn.Module):
 			for i in range(len(cfg.tasks)):
 				self._action_masks[i, :cfg.action_dims[i]] = 1.
 		self._encoder = layers.enc(cfg)
-		self._dynamics = layers.mlp(cfg.latent_dim + 1 + cfg.task_dim, 2*[cfg.mlp_dim], cfg.latent_dim, act=layers.SimNorm(cfg)) #DM-POI: Use one-hot encoding for + 1
-		self._reward = layers.mlp(cfg.latent_dim + 1 + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1))
-		#self._dynamics = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.latent_dim, act=layers.SimNorm(cfg)) #DM-POI: Use one-hot encoding for + 1
-		#self._reward = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1))
+		#ORIGINAL (no one-hot encoding for actions):
+		#self._dynamics = layers.mlp(cfg.latent_dim + 1 + cfg.task_dim, 2*[cfg.mlp_dim], cfg.latent_dim, act=layers.SimNorm(cfg)) #DM-POI: Use one-hot encoding for + 1
+		#self._reward = layers.mlp(cfg.latent_dim + 1 + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1))
+
+		#MODIFIED (using one-hot encodings for actions):
+		self._dynamics = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.latent_dim, act=layers.SimNorm(cfg)) #DM-POI: Use one-hot encoding for + 1
+		self._reward = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1))
+
 		self._pi = layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.action_dim)
 		self._Qs = layers.Ensemble([layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.action_dim, dropout=cfg.dropout) for _ in range(cfg.num_q)])
 		self.apply(init.weight_init)
@@ -111,7 +116,9 @@ class WorldModelDiscrete(nn.Module):
 		"""
 		if self.cfg.multitask:
 			z = self.task_emb(z, task)
-		z = torch.cat([z, a], dim=-1)
+
+		z = torch.cat([z, a.squeeze()], dim=-1)
+		
 		return self._dynamics(z)
 
 	def reward(self, z, a, task):
@@ -120,7 +127,7 @@ class WorldModelDiscrete(nn.Module):
 		"""
 		if self.cfg.multitask:
 			z = self.task_emb(z, task)
-		z = torch.cat([z, a], dim=-1)
+		z = torch.cat([z, a.squeeze()], dim=-1) 
 		return self._reward(z)
 
 	def pi(self, z, task):
@@ -143,6 +150,7 @@ class WorldModelDiscrete(nn.Module):
 			actions = a1
 		action_probs = policy_dist.probs
 		log_probs = torch.nn.functional.log_softmax(logits, dim=-1)
+		enc_actions = F.one_hot(actions,num_classes=self.cfg.action_dim)
 		
 		return actions, action_probs, log_probs
 

@@ -5,6 +5,7 @@ import torch
 from tensordict.tensordict import TensorDict
 from trainer.base import Trainer
 
+from ipdb import set_trace
 
 class OnlineTrainer(Trainer):
 	"""Trainer class for single-task online TD-MPC2 training."""
@@ -97,6 +98,8 @@ class OnlineTrainer(Trainer):
 				action = self.agent.act(obs, t0=len(self._tds)==1)
 			else:
 				action = self.env.rand_act()
+				#if self.cfg.action_mode == "discrete":
+				#	action = torch.nn.functional.one_hot(action.long(),num_classes=self.cfg.action_dim) #DM-HARDOCDE: need to change... probably through env wrapper?
 			obs, reward, done, info = self.env.step(action)
 			self._tds.append(self.to_td(obs, action, reward))
 

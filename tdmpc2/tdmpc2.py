@@ -109,10 +109,9 @@ class TDMPC2(torch.nn.Module):
 			a = self.plan(obs, t0=t0, eval_mode=eval_mode, task=task)
 		else:
 			z = self.model.encode(obs, task)
-			if CRITIC_ONLY:
-				a = self.model.Q(z, None, 'avg', False, False).argmax().unsqueeze(0)
-				#print("A = ", a)
-			else:
+			if CRITIC_ONLY: #DQN-type approach
+				a = self.model.Q(z, task, 'avg', target=False, detach=False).argmax().unsqueeze(0)
+			else: #Actor-critic approach
 				a = self.model.pi(z, task)[0]
 		return a.cpu()
 
@@ -238,35 +237,24 @@ class TDMPC2(torch.nn.Module):
 		actions, action_probs, log_probs = self.model.pi(zs, task)
 
 		qs = self.model.Q(zs, task, return_type='avg', detach=True)
-		#x = qs.mean()
-		#print("PRE-Q: ", x)
-		#print("PRE QS MEAN: ", qs.mean())
-		#print("ENTROPY TERM: ", (self.cfg.entropy_coef * log_probs).mean())
 		self.scale.update(qs[0].gather(1,actions[0]))
 		qs = self.scale(qs)
-		#print("SCALED QS MEAN: ", qs.mean())
 
 		# Loss is a weighted sum of Q-values
 		rho = torch.pow(self.cfg.rho, torch.arange(len(qs), device=self.device))
 
 		#DM: both losses are monotonically increasing...
-		#set_trace()
-		#pi_loss = ((action_probs*((self.cfg.entropy_coef * log_probs) - qs)).mean(dim=(1,2)) * rho).mean() #DM: Yutao's loss
-		#pi_loss = torch.bmm(action_probs,(self.cfg.entropy_coef * log_probs - qs).transpose(1,2)) #DM: Darrien's loss #1
-		#pi_loss = (torch.bmm(action_probs,(self.cfg.entropy_coef * log_probs - qs).transpose(1,2)).mean(dim=(1,2))*rho).mean() #DM: Darrien's loss #2
-		#set_trace()
+
+		#DM: Yutao's loss
+		#pi_loss = ((action_probs*((self.cfg.entropy_coef * log_probs) - qs)).mean(dim=(1,2)) * rho).mean() 
+
+		#DM: Modified loss, decomposing into terms for debugging purposes
 		entropy_term = (self.cfg.entropy_coef * log_probs)#[0]#no horizon test #.gather(2, actions)
 		value_term = qs#[0]#no horizon test#.gather(2, actions)
 		entropy_value_diff_term = entropy_term - value_term
 		action_prob_term = action_probs.transpose(1,2)#[0] #no horizon test
-		exact_expectation = torch.bmm(action_prob_term,entropy_value_diff_term) #using torch.bmm function to perform batched matrix multiplication
-		#exact_expectation = torch.matmul(action_prob_term,entropy_value_diff_term) #no horizon test (rho=1)
-		#pi_loss = (exact_expectation.mean((1,2))*rho).mean()
+		exact_expectation = torch.bmm(action_prob_term,entropy_value_diff_term) #performing batched matrix multiplication
 		pi_loss = (exact_expectation.sum((1,2))*rho).mean()
-		#print("DARRIEN LOSS: ", pi_loss_1)
-		#print("YUTAO LOSS: ", pi_loss)
-		#print("PI LOSS = ", pi_loss)
-		#print("ENTROPY TERM: ", entropy_term.mean())
 
 		pi_loss.backward()
 		pi_grad_norm = torch.nn.utils.clip_grad_norm_(self.model._pi.parameters(), self.cfg.grad_clip_norm)
@@ -370,24 +358,26 @@ class TDMPC2(torch.nn.Module):
 			torch.Tensor: TD-target.
 		"""
 		next_actions, next_act_prob, next_log_prob = self.model.pi(next_z, task)
-		#set_trace()
 		
 		#ORIGINAL (from Yutao's branch):
-		#next_q_target = self.model.Q(next_z, task, return_type='min', target=True) #DM: Old (yutao version); shouldn't the Q-target be just for the action that was taken?
-		#min_q_next_target = next_act_prob * (next_q_target - self.cfg.entropy_coef * next_log_prob) 
-		#min_q_next_target = min_q_next_target.sum(dim=2, keepdim=True) #DM-POI: wait... why sum?
+		"""
+		next_q_target = self.model.Q(next_z, task, return_type='min', target=True)
+		min_q_next_target = next_act_prob * (next_q_target - self.cfg.entropy_coef * next_log_prob) 
+		min_q_next_target = min_q_next_target.sum(dim=2, keepdim=True)
+		"""
 
-		if not CRITIC_ONLY:
-			#MODIFIED:
-			Qz = self.model.Q(next_z, task, return_type='min', target=True) #DM: I don't think the proper (min) Q's are being selected properly due to Q(s) -> R^|A| != R
+		#MODIFIED (version in which TD targets are only calculated/updated for the action that was taken)
+		if not CRITIC_ONLY: #testing with SAC elements
+			#DM: I don't know if the proper (min) Q's are being selected properly due to Q(s) -> R^|A| != R -> I need to investigate this
+			Qz = self.model.Q(next_z, task, return_type='min', target=True) 
 			next_qa_target = Qz.gather(2, next_actions)
 			next_qa_log_prob = next_log_prob.gather(2, next_actions)
-			#min_q_next_target = next_act_prob * (next_qa_target - self.cfg.entropy_coef * next_qa_log_prob) #DM: Min q-target still needs to be investigated
-			min_q_next_target = next_qa_target - self.cfg.entropy_coef * next_qa_log_prob #do we need the action prob?
-		else:
-			Qz = self.model.Q(next_z, task, return_type='min', target=True)#Target false or true? #DM: I don't think the proper (min) Q's are being selected properly due to Q(s) -> R^|A| != R
+			#min_q_next_target = next_act_prob * (next_qa_target - self.cfg.entropy_coef * next_qa_log_prob)
+			min_q_next_target = next_qa_target - self.cfg.entropy_coef * next_qa_log_prob #do we need the action prob for this version?
+		else: #DM: an ablation; testing without SAC elements (CRITIC/VALUE ONLY)
+			Qz = self.model.Q(next_z, task, return_type='min', target=True) 
 			next_qa_target = Qz.gather(2, next_actions)
-			min_q_next_target = next_qa_target #do we need the action prob?
+			min_q_next_target = next_qa_target
 
 		discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
 		td_targets = reward + discount * min_q_next_target
@@ -401,6 +391,9 @@ class TDMPC2(torch.nn.Module):
 
 		# Prepare for update
 		self.model.train()
+
+		# Encode actions (one-hot encoding)
+		action = F.one_hot(action.squeeze().long(),num_classes=self.cfg.action_dim) #DM-POI: encoded action
 
 		# Latent rollout
 		zs = torch.empty(self.cfg.horizon+1, self.cfg.batch_size, self.cfg.latent_dim, device=self.device)
@@ -422,9 +415,19 @@ class TDMPC2(torch.nn.Module):
 		for t, (rew_pred_unbind, rew_unbind, td_targets_unbind, qs_unbind) in enumerate(zip(reward_preds.unbind(0), reward.unbind(0), td_targets.unbind(0), qs.unbind(1))):
 			reward_loss = reward_loss + math.soft_ce(rew_pred_unbind, rew_unbind, self.cfg).mean() * self.cfg.rho**t
 			for _, qs_unbind_unbind in enumerate(qs_unbind.unbind(0)):
-				#set_trace()
-				value_loss = value_loss + torch.nn.functional.mse_loss(qs_unbind_unbind.gather(1,action[t].long()).view(-1), td_targets_unbind.view(-1), self.cfg) * self.cfg.rho**t
-				# value_loss = value_loss + math.soft_ce(qs_unbind_unbind.gather(1,action[t].long()).view(-1), td_targets_unbind, self.cfg).mean() * self.cfg.rho**t
+				### NON-ENCODED CASES
+
+				## Original (Yutao's) version:
+				#qs_unbind_unbind_act = qs_unbind_unbind.gather(1,action[t].long()).view(-1)
+				#value_loss = value_loss + torch.nn.functional.mse_loss(qs_unbind_unbind_act, td_targets_unbind).mean() * self.cfg.rho**t
+
+				## Modified version (relies on modified td_targets calculations):
+				#value_loss = value_loss + torch.nn.functional.mse_loss(qs_unbind_unbind.gather(1,action[t].long()).view(-1), td_targets_unbind.view(-1), self.cfg) * self.cfg.rho**t
+
+				### ONE-HOT ENCODED CASE:
+				sampled_actions = action[t].argmax(dim=1).unsqueeze(1)
+				value_loss = value_loss + torch.nn.functional.mse_loss(qs_unbind_unbind.gather(1, sampled_actions), td_targets_unbind, self.cfg) * self.cfg.rho**t
+				
 
 		consistency_loss = consistency_loss / self.cfg.horizon
 		reward_loss = reward_loss / self.cfg.horizon
@@ -434,8 +437,6 @@ class TDMPC2(torch.nn.Module):
 			self.cfg.reward_coef * reward_loss +
 			self.cfg.value_coef * value_loss
 		)
-		#print("REWARD LOSS: ", reward_loss)
-		#print("VALUE LOSS: ", value_loss)
 
 		# Update model
 		total_loss.backward()
