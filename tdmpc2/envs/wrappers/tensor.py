@@ -4,7 +4,7 @@ import gym
 import numpy as np
 import torch
 
-
+CRITIC_ONLY = True
 class TensorWrapper(gym.Wrapper):
 	"""
 	Wrapper for converting numpy arrays to torch tensors.
@@ -47,7 +47,10 @@ class TensorWrapper(gym.Wrapper):
 
 	def step(self, action):
 		if self.action_mode == "discrete":
-			action = int(action[0])
+			if not CRITIC_ONLY:
+				action = int(action[0])
+			else:
+				action = int(action)
 		else:
 			action = action.numpy()
 	
