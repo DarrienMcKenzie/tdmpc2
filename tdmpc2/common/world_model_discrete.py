@@ -9,6 +9,7 @@ from tensordict.nn import TensorDictParams
 import torch.nn.functional as F
 from ipdb import set_trace
 
+CRITIC_ONLY = False
 class WorldModelDiscrete(nn.Module):
 	"""
 	TD-MPC2 implicit world model architecture for discrete actions.
@@ -179,9 +180,12 @@ class WorldModelDiscrete(nn.Module):
 		if return_type == 'all':
 			return out
 
-		qidx = torch.randperm(self.cfg.num_q, device=out.device)[:2] #DM: (to-add)
+		qidx = torch.randperm(self.cfg.num_q, device=out.device)[:2] #DM: Use 1 Q for CRITIC-ONLY approach
 		Q = out[qidx]
 
+		if CRITIC_ONLY:
+			return Q
+		
 		if return_type == "min":
 			return Q.min(0).values
-		return Q.sum(0) / len(qidx)
+		return Q.sum(0) / 2

@@ -1,4 +1,6 @@
 import gym
+import cartpole_swingup_envs
+
 from ipdb import set_trace
 def make_env(cfg):
     """Only for Pendulum-v1, a simple task for debugging.

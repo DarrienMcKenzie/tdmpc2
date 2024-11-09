@@ -6,7 +6,7 @@ from tensordict.tensordict import TensorDict
 from trainer.base import Trainer
 
 from ipdb import set_trace
-
+CRITIC_ONLY = False
 class OnlineTrainer(Trainer):
 	"""Trainer class for single-task online TD-MPC2 training."""
 
@@ -95,11 +95,17 @@ class OnlineTrainer(Trainer):
 
 			# Collect experience
 			if self._step > self.cfg.seed_steps:
-				action = self.agent.act(obs, t0=len(self._tds)==1)
+				if CRITIC_ONLY: #for DQN-type approach
+					EPSILON = 0.10
+					explore_prob = np.random.random()
+					if explore_prob <= EPSILON:
+						action = self.env.rand_act()
+					else:
+						action = self.agent.act(obs, t0=len(self._tds)==1)
+				else:
+					action = self.agent.act(obs, t0=len(self._tds)==1)
 			else:
 				action = self.env.rand_act()
-				#if self.cfg.action_mode == "discrete":
-				#	action = torch.nn.functional.one_hot(action.long(),num_classes=self.cfg.action_dim) #DM-HARDOCDE: need to change... probably through env wrapper?
 			obs, reward, done, info = self.env.step(action)
 			self._tds.append(self.to_td(obs, action, reward))
 

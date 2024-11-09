@@ -8,7 +8,7 @@ from common.world_model_discrete import WorldModelDiscrete
 from tensordict import TensorDict
 from ipdb import set_trace
 
-CRITIC_ONLY = True
+CRITIC_ONLY = False
 class TDMPC2(torch.nn.Module):
 	"""
 	TD-MPC2 agent. Implements training + inference.
@@ -246,15 +246,17 @@ class TDMPC2(torch.nn.Module):
 		#DM: both losses are monotonically increasing...
 
 		#DM: Yutao's loss
-		#pi_loss = ((action_probs*((self.cfg.entropy_coef * log_probs) - qs)).mean(dim=(1,2)) * rho).mean() 
+		pi_loss = ((action_probs*((self.cfg.entropy_coef * log_probs) - qs)).mean(dim=(1,2)) * rho).mean() 
 
 		#DM: Modified loss, decomposing into terms for debugging purposes
+		"""
 		entropy_term = (self.cfg.entropy_coef * log_probs)#[0]#no horizon test #.gather(2, actions)
 		value_term = qs#[0]#no horizon test#.gather(2, actions)
 		entropy_value_diff_term = entropy_term - value_term
 		action_prob_term = action_probs.transpose(1,2)#[0] #no horizon test
 		exact_expectation = torch.bmm(action_prob_term,entropy_value_diff_term) #performing batched matrix multiplication
 		pi_loss = (exact_expectation.sum((1,2))*rho).mean()
+		"""
 
 		pi_loss.backward()
 		pi_grad_norm = torch.nn.utils.clip_grad_norm_(self.model._pi.parameters(), self.cfg.grad_clip_norm)
@@ -360,14 +362,16 @@ class TDMPC2(torch.nn.Module):
 		next_actions, next_act_prob, next_log_prob = self.model.pi(next_z, task)
 		
 		#ORIGINAL (from Yutao's branch):
-		"""
+		
 		next_q_target = self.model.Q(next_z, task, return_type='min', target=True)
 		min_q_next_target = next_act_prob * (next_q_target - self.cfg.entropy_coef * next_log_prob) 
 		min_q_next_target = min_q_next_target.sum(dim=2, keepdim=True)
-		"""
 
+		"""
 		#MODIFIED (version in which TD targets are only calculated/updated for the action that was taken)
 		if not CRITIC_ONLY: #testing with SAC elements
+			#Yutao's:
+
 			#DM: I don't know if the proper (min) Q's are being selected properly due to Q(s) -> R^|A| != R -> I need to investigate this
 			Qz = self.model.Q(next_z, task, return_type='min', target=True) 
 			next_qa_target = Qz.gather(2, next_actions)
@@ -375,9 +379,11 @@ class TDMPC2(torch.nn.Module):
 			#min_q_next_target = next_act_prob * (next_qa_target - self.cfg.entropy_coef * next_qa_log_prob)
 			min_q_next_target = next_qa_target - self.cfg.entropy_coef * next_qa_log_prob #do we need the action prob for this version?
 		else: #DM: an ablation; testing without SAC elements (CRITIC/VALUE ONLY)
+			#ACTION-TAKEN VERSION:
 			Qz = self.model.Q(next_z, task, return_type='min', target=True) 
 			next_qa_target = Qz.gather(2, next_actions)
 			min_q_next_target = next_qa_target
+		"""
 
 		discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
 		td_targets = reward + discount * min_q_next_target
@@ -426,12 +432,12 @@ class TDMPC2(torch.nn.Module):
 
 				### ONE-HOT ENCODED CASE:
 				sampled_actions = action[t].argmax(dim=1).unsqueeze(1)
-				value_loss = value_loss + torch.nn.functional.mse_loss(qs_unbind_unbind.gather(1, sampled_actions), td_targets_unbind, self.cfg) * self.cfg.rho**t
+				value_loss = value_loss + F.mse_loss(qs_unbind_unbind.gather(1, sampled_actions), td_targets_unbind, self.cfg) * self.cfg.rho**t
 				
 
 		consistency_loss = consistency_loss / self.cfg.horizon
 		reward_loss = reward_loss / self.cfg.horizon
-		value_loss = value_loss / (self.cfg.horizon * self.cfg.num_q)
+		value_loss = value_loss / (self.cfg.horizon) #* self.cfg.num_q)
 		total_loss = (
 			self.cfg.consistency_coef * consistency_loss +
 			self.cfg.reward_coef * reward_loss +
@@ -445,23 +451,37 @@ class TDMPC2(torch.nn.Module):
 		self.optim.zero_grad(set_to_none=True)
 
 		# Update policy
-		pi_loss, pi_grad_norm = self.update_pi_discrete(zs.detach(), task)
+		if not CRITIC_ONLY:
+			pi_loss, pi_grad_norm = self.update_pi_discrete(zs.detach(), task)
 
-		# Update target Q-functions
-		self.model.soft_update_target_Q()
+			# Update target Q-functions
+			self.model.soft_update_target_Q()
 
-		# Return training statistics
-		self.model.eval()
-		return TensorDict({
-			"consistency_loss": consistency_loss,
-			"reward_loss": reward_loss,
-			"value_loss": value_loss,
-			"pi_loss": pi_loss,
-			"total_loss": total_loss,
-			"grad_norm": grad_norm,
-			"pi_grad_norm": pi_grad_norm,
-			"pi_scale": self.scale.value,
-		}).detach().mean()
+			# Return training statistics
+			self.model.eval()
+			return TensorDict({
+				"consistency_loss": consistency_loss,
+				"reward_loss": reward_loss,
+				"value_loss": value_loss,
+				"pi_loss": pi_loss,
+				"total_loss": total_loss,
+				"grad_norm": grad_norm,
+				"pi_grad_norm": pi_grad_norm,
+				"pi_scale": self.scale.value,
+			}).detach().mean()
+		else: #CRITIC ONLY
+			# Update target Q-functions
+			self.model.soft_update_target_Q()
+
+			# Return training statistics
+			self.model.eval()
+			return TensorDict({
+				"consistency_loss": consistency_loss,
+				"reward_loss": reward_loss,
+				"value_loss": value_loss,
+				"total_loss": total_loss,
+				"grad_norm": grad_norm
+			}).detach().mean()
 	
 	def update(self, buffer):
 		"""
