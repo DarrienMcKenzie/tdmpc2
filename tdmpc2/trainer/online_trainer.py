@@ -6,7 +6,7 @@ from tensordict.tensordict import TensorDict
 from trainer.base import Trainer
 
 from ipdb import set_trace
-CRITIC_ONLY = False
+CRITIC_ONLY = True
 class OnlineTrainer(Trainer):
 	"""Trainer class for single-task online TD-MPC2 training."""
 
