@@ -56,7 +56,7 @@ def cfg_to_dataclass(cfg, frozen=False):
 	dataclass.get = get
 	return dataclass()
 
-@hydra.main(config_name='config_simple', config_path='.')
+@hydra.main(config_name='config_discrete', config_path='.')
 def train(cfg: dict):
 	"""
 	Script for training single-task / multi-task TD-MPC2 agents.
@@ -87,7 +87,7 @@ def train(cfg: dict):
 
 	cfg = cfg_to_dataclass(cfg)
 
-	cfg.exp_name = cfg.exp_name + f'_{cfg.action_mode}_{cfg.optimizer}'
+	#cfg.exp_name = cfg.exp_name + f'_{cfg.action_mode}_{cfg.optimizer}'
 
 	trainer = trainer_cls(
 		cfg=cfg,

@@ -34,8 +34,9 @@ class OnlineTrainer(Trainer):
 			while not done:
 				action = self.agent.act(obs, t0=t==0, eval_mode=True)
 				obs, reward, done, info = self.env.step(action)
-				done = info['real_done'] if self.cfg.episode_life else done
-				ep_reward += info['raw_reward'] if self.cfg.clip_rewards else reward
+				#done = info['real_done'] if self.cfg.episode_life else done #from Yutao's branch
+				#ep_reward += info['raw_reward'] if self.cfg.clip_rewards else reward #from Yutao's branch
+				ep_reward += reward
 				t += 1
 				if self.cfg.save_video:
 					self.logger.video.record(self.env)
@@ -96,9 +97,17 @@ class OnlineTrainer(Trainer):
 			# Collect experience
 			if self._step > self.cfg.seed_steps:
 				if CRITIC_ONLY: #for DQN-type approach
-					EPSILON = 0.10
+					if self._step <= 10000:
+						EPSILON = 0.05 #1
+					elif self._step <= 20000:
+						EPSILON = 0.01
+					elif self._step <= 50000:
+						EPSILON = 0.01
+					elif self._step <= 75000:
+						EPSILON = 0.01
 					explore_prob = np.random.random()
 					if explore_prob <= EPSILON:
+						#print("RANDOM ACT, PERCENTAGE = " + str(EPSILON*100) + "%")
 						action = self.env.rand_act()
 					else:
 						action = self.agent.act(obs, t0=len(self._tds)==1)

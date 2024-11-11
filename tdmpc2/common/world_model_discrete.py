@@ -153,7 +153,7 @@ class WorldModelDiscrete(nn.Module):
 		log_probs = torch.nn.functional.log_softmax(logits, dim=-1)
 		enc_actions = F.one_hot(actions,num_classes=self.cfg.action_dim)
 		
-		return actions, action_probs, log_probs
+		return enc_actions, action_probs, log_probs
 
 	def Q(self, z, task, return_type='min', target=False, detach=False):
 		"""
@@ -180,11 +180,8 @@ class WorldModelDiscrete(nn.Module):
 		if return_type == 'all':
 			return out
 
-		qidx = torch.randperm(self.cfg.num_q, device=out.device)[0] #DM: (to-add)
+		qidx = torch.randperm(self.cfg.num_q, device=out.device)[:2]
 		Q = out[qidx]
-
-		if CRITIC_ONLY:
-			return Q
 		
 		if return_type == "min":
 			return Q.min(0).values

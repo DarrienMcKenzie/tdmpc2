@@ -345,7 +345,7 @@ class TDMPC2(torch.nn.Module):
 			"pi_scale": self.scale.value,
 		}).detach().mean()
 	
-	def _td_target_discrete(self, next_z, reward, task):
+	def _td_target_discrete(self, next_z, reward, task, action=None):
 		"""
 		Compute the TD-target from a reward and the observation at the following time step.
 
@@ -357,7 +357,6 @@ class TDMPC2(torch.nn.Module):
 		Returns:
 			torch.Tensor: TD-target.
 		"""
-		next_actions, next_act_prob, next_log_prob = self.model.pi(next_z, task)
 		
 		#ORIGINAL (from Yutao's branch):
 		"""
@@ -369,23 +368,16 @@ class TDMPC2(torch.nn.Module):
 		#MODIFIED (version in which TD targets are only calculated/updated for the action that was taken)
 		if not CRITIC_ONLY: #testing with SAC elements
 			#DM: I don't know if the proper (min) Q's are being selected properly due to Q(s) -> R^|A| != R -> I need to investigate this
+			next_actions, next_act_prob, next_log_prob = self.model.pi(next_z, task)
 			Qz = self.model.Q(next_z, task, return_type='min', target=True) 
 			next_qa_target = Qz.gather(2, next_actions)
 			next_qa_log_prob = next_log_prob.gather(2, next_actions)
 			#min_q_next_target = next_act_prob * (next_qa_target - self.cfg.entropy_coef * next_qa_log_prob)
-			min_q_next_target = next_qa_target - self.cfg.entropy_coef * next_qa_log_prob #do we need the action prob for this version?
+			min_q_next_target = next_qa_target - self.cfg.entropy_coef * next_qa_log_prob
 		else: #DM: an ablation; testing without SAC elements (CRITIC/VALUE ONLY)
-			"""
-			next_q_target = self.model.Q(next_z, task, return_type='min', target=True)
-			min_q_next_target = next_act_prob * (next_q_target - self.cfg.entropy_coef * next_log_prob) 
-			min_q_next_target = min_q_next_target.sum(dim=2, keepdim=True)
-			"""
-
-			#ACTION-TAKEN VERSION:
-			Qz = self.model.Q(next_z, task, return_type='min', target=True) 
-			next_qa_target = Qz.gather(2, next_actions)
-			min_q_next_target = next_qa_target
-
+			Qz = self.model.Q(next_z, task, return_type='min', target=True) #DM-POI: Qs are the same for every 256?
+			min_q_next_target = Qz.max(2).values.unsqueeze(2) #DM: Old; pre-"pure DQN fix"
+		
 		discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
 		td_targets = reward + discount * min_q_next_target
 		return td_targets
@@ -394,7 +386,11 @@ class TDMPC2(torch.nn.Module):
 		# Compute targets
 		with torch.no_grad():
 			next_z = self.model.encode(obs[1:], task)
-			td_targets = self._td_target_discrete(next_z, reward, task)
+
+			if not CRITIC_ONLY:
+				td_targets = self._td_target_discrete(next_z, reward, task) #DM-POI
+			else: #FOR CRITIC
+				td_targets = self._td_target_discrete(next_z, reward, task, action) #DM-POI
 
 		# Prepare for update
 		self.model.train()
@@ -431,7 +427,7 @@ class TDMPC2(torch.nn.Module):
 				## Modified version (relies on modified td_targets calculations):
 				#value_loss = value_loss + torch.nn.functional.mse_loss(qs_unbind_unbind.gather(1,action[t].long()).view(-1), td_targets_unbind.view(-1), self.cfg) * self.cfg.rho**t
 
-				### ONE-HOT ENCODED CASE:
+				### ONE-HOT ENCODED CASE: #DM-POI: are the acions taken == actions updated?
 				sampled_actions = action[t].argmax(dim=1).unsqueeze(1)
 				value_loss = value_loss + F.mse_loss(qs_unbind_unbind.gather(1, sampled_actions), td_targets_unbind, self.cfg) * self.cfg.rho**t
 				
@@ -470,7 +466,7 @@ class TDMPC2(torch.nn.Module):
 				"pi_grad_norm": pi_grad_norm,
 				"pi_scale": self.scale.value,
 			}).detach().mean()
-		else: #ACTOR-CRITIC
+		else:
 			# Update target Q-functions
 			self.model.soft_update_target_Q()
 
@@ -481,7 +477,7 @@ class TDMPC2(torch.nn.Module):
 				"reward_loss": reward_loss,
 				"value_loss": value_loss,
 				"total_loss": total_loss,
-				"grad_norm": grad_norm
+				"grad_norm": grad_norm,
 			}).detach().mean()
 	
 	def update(self, buffer):

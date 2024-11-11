@@ -4,46 +4,31 @@ defaults:
 # environment
 task: CartPoleSwingUpDiscrete-v0
 obs: state
-task_platform: atari
-
-#only for atari
-gray_scale: false
-obs_to_string: false
-n_skip: 1
-max_episode_steps: 300 #1000 original for cartpoleswingup
-episode_life: false
-clip_rewards: false
-resize: 96
-action_range: 1
 
 # evaluation
 checkpoint: ???
 eval_episodes: 10
-eval_freq: 10
+eval_freq: 50000
 
 # training
-steps: 2_000
+steps: 10_000_000
 batch_size: 256
 reward_coef: 0.1
 value_coef: 0.1
 consistency_coef: 20
 rho: 0.5
-# lr: 2e-1
-weight_decay: 1e-4 #only for sgd
-final_lr: 2e-2 #only for sgd
-momentum: 0.9 #only for sgd
-lr: 3e-3
-optimizer: adam
+lr: 3e-4
 enc_lr_scale: 0.3
 grad_clip_norm: 20
 tau: 0.01
 discount_denom: 5
-discount_min: 0.995
-discount_max: 0.999
+discount_min: 0.95
+discount_max: 0.995
 buffer_size: 1_000_000
-exp_name: CartPole
+exp_name: CartPole-SwingUp
 data_dir: ???
-#test discrete
+
+max_episode_steps: 1000
 action_mode: discrete
 
 # planning
@@ -59,25 +44,25 @@ temperature: 0.5
 
 # actor
 log_std_min: -10
-log_std_max: -5
+log_std_max: 2
 entropy_coef: 1e-4
 
 # critic
-num_bins: 10
-vmin: -1
-vmax: +100
+num_bins: 101
+vmin: -10
+vmax: +10
 
 # architecture
 model_size: ???
-num_enc_layers: 1
-enc_dim: 4
+num_enc_layers: 2
+enc_dim: 256
 num_channels: 32
-mlp_dim: 4
-latent_dim: 4
-task_dim: 1
+mlp_dim: 512
+latent_dim: 512
+task_dim: 96
 num_q: 5
-dropout: 0.001
-simnorm_dim: 4
+dropout: 0.01
+simnorm_dim: 8
 
 # logging
 wandb_project: tdmpc-discrete
@@ -87,8 +72,8 @@ enable_wandb: true
 save_csv: true
 
 # misc
-save_video: false #should be solved in atari
-save_agent: false
+save_video: true
+save_agent: true
 seed: 1
 
 # convenience
@@ -104,5 +89,6 @@ action_dims: ???
 episode_lengths: ???
 seed_steps: ???
 bin_size: ???
+
 # speedups
 compile: False
