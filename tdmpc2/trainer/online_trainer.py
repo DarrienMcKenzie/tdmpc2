@@ -49,7 +49,7 @@ class OnlineTrainer(Trainer):
 			episode_success=np.nanmean(ep_successes),
 		)
 
-	def to_td(self, obs, action=None, reward=None):
+	def to_td(self, obs, action=None, reward=None, done=None):
 		"""Creates a TensorDict for a new episode."""
 		if isinstance(obs, dict):
 			obs = TensorDict(obs, batch_size=(), device='cpu')
@@ -59,12 +59,18 @@ class OnlineTrainer(Trainer):
 			action = torch.full_like(self.env.rand_act(), float('nan'))
 		if reward is None:
 			reward = torch.tensor(float('nan'))
+		if done is None:
+			done = torch.tensor(0)
+		else:
+			done = torch.tensor(int(done))
 		td = TensorDict(
 			obs=obs,
 			action=action.unsqueeze(0),
 			reward=reward.unsqueeze(0),
+			done=done.unsqueeze(0), #DM-POI: termination prediction
 		batch_size=(1,))
 		return td
+
 
 	def train(self):
 		"""Train a TD-MPC2 agent."""

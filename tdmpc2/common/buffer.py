@@ -66,18 +66,19 @@ class Buffer():
 		)
 
 	def _prepare_batch(self, td):
-		"""
-		Prepare a sampled batch for training (post-processing).
-		Expects `td` to be a TensorDict with batch size TxB.
-		"""
-		td = td.select("obs", "action", "reward", "task", strict=False).to(self._device, non_blocking=True)
-		obs = td.get('obs').contiguous()
-		action = td.get('action')[1:].contiguous()
-		reward = td.get('reward')[1:].unsqueeze(-1).contiguous()
-		task = td.get('task', None)
-		if task is not None:
-			task = task[0].contiguous()
-		return obs, action, reward, task
+			"""
+			Prepare a sampled batch for training (post-processing).
+			Expects `td` to be a TensorDict with batch size TxB.
+			"""
+			td = td.select("obs", "action", "reward", "done", "task", strict=False).to(self._device, non_blocking=True)
+			obs = td.get('obs').contiguous()
+			action = td.get('action')[1:].contiguous()
+			reward = td.get('reward')[1:].unsqueeze(-1).contiguous()
+			done = td.get('done')[1:].unsqueeze(-1).contiguous() #DM-POI: termination prediction
+			task = td.get('task', None)
+			if task is not None:
+				task = task[0].contiguous()
+			return obs, action, reward, done, task
 
 	def add(self, td):
 		"""Add an episode to the buffer."""

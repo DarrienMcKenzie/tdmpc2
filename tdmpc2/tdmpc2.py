@@ -381,7 +381,7 @@ class TDMPC2(torch.nn.Module):
 		td_targets = reward + discount * min_q_next_target
 		return td_targets
 
-	def _update_discrete(self, obs, action, reward, task=None):
+	def _update_discrete(self, obs, action, reward, done=None, task=None):
 		# Compute targets
 		with torch.no_grad():
 			next_z = self.model.encode(obs[1:], task)
@@ -411,10 +411,11 @@ class TDMPC2(torch.nn.Module):
 		_zs = zs[:-1]
 		qs = self.model.Q(_zs, task, return_type='all')
 		reward_preds = self.model.reward(_zs, action, task)
+		termination_preds = self.model.termination(_zs, action, task)
 
 		# Compute losses
-		reward_loss, value_loss = 0, 0
-		for t, (rew_pred_unbind, rew_unbind, td_targets_unbind, qs_unbind) in enumerate(zip(reward_preds.unbind(0), reward.unbind(0), td_targets.unbind(0), qs.unbind(1))):
+		reward_loss, termination_loss, value_loss = 0, 0, 0
+		for t, (rew_pred_unbind, rew_unbind, termination_preds_unbind, done_unbind, td_targets_unbind, qs_unbind) in enumerate(zip(reward_preds.unbind(0), reward.unbind(0), termination_preds.unbind(0), done.unbind(0), td_targets.unbind(0), qs.unbind(1))):
 			reward_loss = reward_loss + math.soft_ce(rew_pred_unbind, rew_unbind, self.cfg).mean() * self.cfg.rho**t
 			for _, qs_unbind_unbind in enumerate(qs_unbind.unbind(0)):
 				### NON-ENCODED CASES
@@ -433,12 +434,15 @@ class TDMPC2(torch.nn.Module):
 
 		consistency_loss = consistency_loss / self.cfg.horizon
 		reward_loss = reward_loss / self.cfg.horizon
+		termination_loss = termination_loss / self.cfg.horizon
 		value_loss = value_loss / (self.cfg.horizon) #* self.cfg.num_q)
 		total_loss = (
 			self.cfg.consistency_coef * consistency_loss +
+			self.cfg.consistency_coef * termination_loss +
 			self.cfg.reward_coef * reward_loss +
-			self.cfg.value_coef * value_loss
+			self.cfg.value_coef * value_loss 
 		)
+		#print("TERMINATION LOSS: ", termination_loss)
 
 		# Update model
 		total_loss.backward()
@@ -475,6 +479,7 @@ class TDMPC2(torch.nn.Module):
 				"consistency_loss": consistency_loss,
 				"reward_loss": reward_loss,
 				"value_loss": value_loss,
+				"termination_loss": termination_loss,
 				"total_loss": total_loss,
 				"grad_norm": grad_norm,
 			}).detach().mean()
@@ -489,9 +494,9 @@ class TDMPC2(torch.nn.Module):
 		Returns:
 			dict: Dictionary of training statistics.
 		"""
-		obs, action, reward, task = buffer.sample()
+		obs, action, reward, done, task = buffer.sample()
 		kwargs = {}
 		if task is not None:
 			kwargs["task"] = task
 		torch.compiler.cudagraph_mark_step_begin()
-		return self._update(obs, action, reward, **kwargs) if self.cfg.get('action_mode') != 'discrete' else self._update_discrete(obs, action, reward, **kwargs)
+		return self._update(obs, action, reward, **kwargs) if self.cfg.get('action_mode') != 'discrete' else self._update_discrete(obs, action, reward, done, **kwargs)
