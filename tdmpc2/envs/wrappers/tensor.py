@@ -12,6 +12,7 @@ class TensorWrapper(gym.Wrapper):
 
 	def __init__(self, env, cfg=None):
 		super().__init__(env)
+		self.cfg = cfg
 		self.action_mode = cfg.get('action_mode', 'category')
 	
 	def rand_act(self):
@@ -49,7 +50,7 @@ class TensorWrapper(gym.Wrapper):
 		if self.action_mode == "discrete":
 			#action = int(action.argmax())
 			#BEFORE ENC_ACTION CHANGE
-			if not CRITIC_ONLY:
+			if not self.cfg.critic_only:
 				action = int(action[0])
 			else:
 				action = int(action)

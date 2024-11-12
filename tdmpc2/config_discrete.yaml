@@ -30,6 +30,7 @@ data_dir: ???
 
 max_episode_steps: 1000
 action_mode: discrete
+critic_only: true
 
 # planning
 mpc: false

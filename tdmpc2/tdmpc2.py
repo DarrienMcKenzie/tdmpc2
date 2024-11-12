@@ -366,7 +366,7 @@ class TDMPC2(torch.nn.Module):
 		"""
 
 		#MODIFIED (version in which TD targets are only calculated/updated for the action that was taken)
-		if not CRITIC_ONLY: #testing with SAC elements
+		if not self.cfg.critic_only: #testing with SAC elements
 			#DM: I don't know if the proper (min) Q's are being selected properly due to Q(s) -> R^|A| != R -> I need to investigate this
 			next_actions, next_act_prob, next_log_prob = self.model.pi(next_z, task)
 			Qz = self.model.Q(next_z, task, return_type='min', target=True) 
@@ -387,7 +387,7 @@ class TDMPC2(torch.nn.Module):
 		with torch.no_grad():
 			next_z = self.model.encode(obs[1:], task)
 
-			if not CRITIC_ONLY:
+			if not self.cfg.critic_only:
 				td_targets = self._td_target_discrete(next_z, reward, task) #DM-POI
 			else: #FOR CRITIC
 				td_targets = self._td_target_discrete(next_z, reward, task, action) #DM-POI
@@ -448,7 +448,7 @@ class TDMPC2(torch.nn.Module):
 		self.optim.zero_grad(set_to_none=True)
 
 		# Update policy
-		if not CRITIC_ONLY:
+		if not self.cfg.critic_only:
 			pi_loss, pi_grad_norm = self.update_pi_discrete(zs.detach(), task)
 
 			# Update target Q-functions
