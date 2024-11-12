@@ -6,7 +6,7 @@ from tensordict.tensordict import TensorDict
 from trainer.base import Trainer
 
 from ipdb import set_trace
-CRITIC_ONLY = True
+
 class OnlineTrainer(Trainer):
 	"""Trainer class for single-task online TD-MPC2 training."""
 
@@ -96,7 +96,7 @@ class OnlineTrainer(Trainer):
 
 			# Collect experience
 			if self._step > self.cfg.seed_steps:
-				if CRITIC_ONLY: #for DQN-type approach
+				if self.cfg.critic_only: #for DQN-type approach
 					if self._step <= 10000:
 						EPSILON = 0.05 #1
 					elif self._step <= 20000:

@@ -4,7 +4,6 @@ import gym
 import numpy as np
 import torch
 
-CRITIC_ONLY = True
 class TensorWrapper(gym.Wrapper):
 	"""
 	Wrapper for converting numpy arrays to torch tensors.

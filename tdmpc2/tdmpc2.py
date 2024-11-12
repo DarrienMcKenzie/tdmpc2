@@ -8,7 +8,6 @@ from common.world_model_discrete import WorldModelDiscrete
 from tensordict import TensorDict
 from ipdb import set_trace
 
-CRITIC_ONLY = True
 class TDMPC2(torch.nn.Module):
 	"""
 	TD-MPC2 agent. Implements training + inference.
@@ -109,7 +108,7 @@ class TDMPC2(torch.nn.Module):
 			a = self.plan(obs, t0=t0, eval_mode=eval_mode, task=task)
 		else:
 			z = self.model.encode(obs, task)
-			if CRITIC_ONLY: #DQN-type approach
+			if self.cfg.critic_only: #DQN-type approach
 				a = self.model.Q(z, task, 'avg', target=False, detach=False).argmax().unsqueeze(0)
 			else: #Actor-critic approach
 				a = self.model.pi(z, task)[0]

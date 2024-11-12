@@ -9,7 +9,6 @@ from tensordict.nn import TensorDictParams
 import torch.nn.functional as F
 from ipdb import set_trace
 
-CRITIC_ONLY = True
 class WorldModelDiscrete(nn.Module):
 	"""
 	TD-MPC2 implicit world model architecture for discrete actions.
