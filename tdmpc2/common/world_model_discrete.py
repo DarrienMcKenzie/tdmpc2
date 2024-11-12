@@ -190,5 +190,5 @@ class WorldModelDiscrete(nn.Module):
 	def termination(self, z, a, task):
 		if self.cfg.multitask:
 			z = self.task_emb(z, task)
-		z = torch.cat([z, a.squeeze()], dim=-1)
-		return F.sigmoid(self._termination(z))
+		z = torch.cat([z, a.squeeze()], dim=-1) #ORIGINAL, FROM REWARD
+		return F.sigmoid(self._termination(z)).to(torch.float32)

@@ -60,9 +60,9 @@ class OnlineTrainer(Trainer):
 		if reward is None:
 			reward = torch.tensor(float('nan'))
 		if done is None:
-			done = torch.tensor(0)
+			done = torch.tensor(float('nan'))
 		else:
-			done = torch.tensor(int(done))
+			done = torch.tensor(int(done)).to(torch.float32)
 		td = TensorDict(
 			obs=obs,
 			action=action.unsqueeze(0),
@@ -122,7 +122,7 @@ class OnlineTrainer(Trainer):
 			else:
 				action = self.env.rand_act()
 			obs, reward, done, info = self.env.step(action)
-			self._tds.append(self.to_td(obs, action, reward))
+			self._tds.append(self.to_td(obs, action, reward, done))
 
 			# Update agent
 			if self._step >= self.cfg.seed_steps:

@@ -375,16 +375,21 @@ class TDMPC2(torch.nn.Module):
 			min_q_next_target = next_qa_target - self.cfg.entropy_coef * next_qa_log_prob
 		else: #DM: an ablation; testing without SAC elements (CRITIC/VALUE ONLY)
 			Qz = self.model.Q(next_z, task, return_type='min', target=True) #DM-POI: Qs are the same for every 256?
+			terminal = (self.model.termination(next_z, action, task) < 0.50).to(torch.float32)
 			min_q_next_target = Qz.max(2).values.unsqueeze(2) #DM: Old; pre-"pure DQN fix"
+			
 		
 		discount = self.discount[task].unsqueeze(-1) if self.cfg.multitask else self.discount
-		td_targets = reward + discount * min_q_next_target
+		td_targets = reward + discount * min_q_next_target #* terminal
 		return td_targets
 
 	def _update_discrete(self, obs, action, reward, done=None, task=None):
 		# Compute targets
 		with torch.no_grad():
 			next_z = self.model.encode(obs[1:], task)
+
+			# Encode actions (one-hot encoding)
+			action = F.one_hot(action.squeeze().long(),num_classes=self.cfg.action_dim) #DM-POI: encoded action
 
 			if not self.cfg.critic_only:
 				td_targets = self._td_target_discrete(next_z, reward, task) #DM-POI
@@ -393,9 +398,6 @@ class TDMPC2(torch.nn.Module):
 
 		# Prepare for update
 		self.model.train()
-
-		# Encode actions (one-hot encoding)
-		action = F.one_hot(action.squeeze().long(),num_classes=self.cfg.action_dim) #DM-POI: encoded action
 
 		# Latent rollout
 		zs = torch.empty(self.cfg.horizon+1, self.cfg.batch_size, self.cfg.latent_dim, device=self.device)
@@ -417,8 +419,10 @@ class TDMPC2(torch.nn.Module):
 		reward_loss, termination_loss, value_loss = 0, 0, 0
 		for t, (rew_pred_unbind, rew_unbind, termination_preds_unbind, done_unbind, td_targets_unbind, qs_unbind) in enumerate(zip(reward_preds.unbind(0), reward.unbind(0), termination_preds.unbind(0), done.unbind(0), td_targets.unbind(0), qs.unbind(1))):
 			reward_loss = reward_loss + math.soft_ce(rew_pred_unbind, rew_unbind, self.cfg).mean() * self.cfg.rho**t
+			#termination_loss = termination_loss + F.binary_cross_entropy(termination_preds_unbind.to(torch.float32), done_unbind.to(torch.float32)).mean() * self.cfg.rho**t
+
 			for _, qs_unbind_unbind in enumerate(qs_unbind.unbind(0)):
-				### NON-ENCODED CASES
+				### NON-ENCODED CASES:
 
 				## Original (Yutao's) version:
 				#qs_unbind_unbind_act = qs_unbind_unbind.gather(1,action[t].long()).view(-1)
@@ -427,7 +431,7 @@ class TDMPC2(torch.nn.Module):
 				## Modified version (relies on modified td_targets calculations):
 				#value_loss = value_loss + torch.nn.functional.mse_loss(qs_unbind_unbind.gather(1,action[t].long()).view(-1), td_targets_unbind.view(-1), self.cfg) * self.cfg.rho**t
 
-				### ONE-HOT ENCODED CASE: #DM-POI: are the acions taken == actions updated?
+				### ONE-HOT ENCODED CASE:
 				sampled_actions = action[t].argmax(dim=1).unsqueeze(1)
 				value_loss = value_loss + F.mse_loss(qs_unbind_unbind.gather(1, sampled_actions), td_targets_unbind, self.cfg) * self.cfg.rho**t
 				
@@ -438,11 +442,11 @@ class TDMPC2(torch.nn.Module):
 		value_loss = value_loss / (self.cfg.horizon) #* self.cfg.num_q)
 		total_loss = (
 			self.cfg.consistency_coef * consistency_loss +
-			self.cfg.consistency_coef * termination_loss +
+			self.cfg.termination_coef * termination_loss +
 			self.cfg.reward_coef * reward_loss +
 			self.cfg.value_coef * value_loss 
 		)
-		#print("TERMINATION LOSS: ", termination_loss)
+
 
 		# Update model
 		total_loss.backward()
