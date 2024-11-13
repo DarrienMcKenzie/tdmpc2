@@ -2,7 +2,7 @@ defaults:
     - override hydra/launcher: submitit_local
 
 # environment
-task: CartPoleSwingUpDiscrete-v0
+task: CartPoleSwingUpDiscrete-v0 #CartPole-v1
 obs: state
 
 # evaluation
@@ -16,7 +16,7 @@ batch_size: 256
 reward_coef: 0.1
 value_coef: 0.1
 consistency_coef: 20
-termination_coef: 20
+terminal_coef: 20
 rho: 0.5
 lr: 3e-4
 enc_lr_scale: 0.3
@@ -26,12 +26,13 @@ discount_denom: 5
 discount_min: 0.95
 discount_max: 0.995
 buffer_size: 1_000_000
-exp_name: CartPole-SwingUp
+exp_name: CartPole-v1 #CartPole-SwingUp
 data_dir: ???
 
-max_episode_steps: 999
+max_episode_steps: 201
 action_mode: discrete
 critic_only: true
+early_stopping: false
 
 # planning
 mpc: false

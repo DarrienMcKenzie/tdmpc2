@@ -31,7 +31,7 @@ class WorldModelDiscrete(nn.Module):
 		#MODIFIED (using one-hot encodings for actions):
 		self._dynamics = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.latent_dim, act=layers.SimNorm(cfg)) #DM-POI: Use one-hot encoding for + 1
 		self._reward = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], max(cfg.num_bins, 1))
-		self._termination = layers.mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim, 2*[cfg.mlp_dim], 1) #DM-POI: termination prediction
+		self._termination = layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], 1) #DM-POI: termination prediction
 
 		self._pi = layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.action_dim)
 		self._Qs = layers.Ensemble([layers.mlp(cfg.latent_dim + cfg.task_dim, 2*[cfg.mlp_dim], cfg.action_dim, dropout=cfg.dropout) for _ in range(cfg.num_q)])
@@ -187,8 +187,8 @@ class WorldModelDiscrete(nn.Module):
 			return Q.min(0).values
 		return Q.sum(0) / len(qidx)
 
-	def termination(self, z, a, task):
+	def termination(self, z, task):
 		if self.cfg.multitask:
 			z = self.task_emb(z, task)
-		z = torch.cat([z, a.squeeze()], dim=-1) #ORIGINAL, FROM REWARD
+		#z = torch.cat([z, a.squeeze()], dim=-1)
 		return F.sigmoid(self._termination(z)).to(torch.float32)
