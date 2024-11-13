@@ -371,16 +371,6 @@ class TDMPC2(torch.nn.Module):
 			next_q_target = self.model.Q(next_z, task, return_type='min', target=True)
 			min_q_next_target = next_act_prob * (next_q_target - (self.cfg.entropy_coef * next_log_prob))
 			min_q_next_target = min_q_next_target.sum(dim=2, keepdim=True)
-
-
-			#DM: I don't know if the proper (min) Q's are being selected properly due to Q(s) -> R^|A| != R -> I need to investigate this
-			#next_actions, next_act_prob, next_log_prob = self.model.pi(next_z, task)
-			#Qz = self.model.Q(next_z, task, return_type='min', target=True) 
-			#next_qa_target = Qz.gather(2, next_actions)
-			#next_qa_log_prob = next_log_prob.gather(2, next_actions)
-			#min_q_next_target = next_act_prob * (next_qa_target - self.cfg.entropy_coef * next_qa_log_prob)
-			#min_q_next_target = next_qa_target - self.cfg.entropy_coef * next_qa_log_prob
-
 		else: #DM: an ablation; testing without SAC elements (CRITIC/VALUE ONLY)
 			Qz = self.model.Q(next_z, task, return_type='min', target=True) #DM-POI: Qs are the same for every 256?
 			min_q_next_target = Qz.max(2).values.unsqueeze(2)
