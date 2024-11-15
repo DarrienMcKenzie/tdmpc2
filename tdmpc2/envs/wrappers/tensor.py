@@ -12,10 +12,9 @@ class TensorWrapper(gym.Wrapper):
 	def __init__(self, env, cfg=None):
 		super().__init__(env)
 		self.cfg = cfg
-		self.action_mode = cfg.get('action_mode', 'category')
 	
 	def rand_act(self):
-		if self.action_mode == 'category':
+		if self.cfg.action_mode == 'discrete':
 			#generate random distribution over actions number
 			act_probs = np.random.rand(self.action_space.n)
 			return torch.tensor(act_probs.astype(np.float32))
@@ -46,7 +45,7 @@ class TensorWrapper(gym.Wrapper):
 		return self._obs_to_tensor(self.env.reset())
 
 	def step(self, action):
-		if self.action_mode == "discrete":
+		if self.cfg.action_mode == "discrete":
 			#action = int(action.argmax())
 			#BEFORE ENC_ACTION CHANGE
 			if not self.cfg.critic_only:

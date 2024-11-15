@@ -19,7 +19,7 @@ class TDMPC2(torch.nn.Module):
 		super().__init__()
 		self.cfg = cfg
 		self.device = torch.device('cuda:0')
-		self.model = WorldModel(cfg).to(self.device) if not cfg.get('action_mode') == 'discrete' else WorldModelDiscrete(cfg).to(self.device)
+		self.model = WorldModel(cfg).to(self.device) if not cfg.action_mode == 'discrete' else WorldModelDiscrete(cfg).to(self.device)
 		self.optim = torch.optim.Adam([
 				{'params': self.model._encoder.parameters(), 'lr': self.cfg.lr*self.cfg.enc_lr_scale},
 				{'params': self.model._dynamics.parameters()},

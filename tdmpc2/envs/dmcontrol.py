@@ -10,7 +10,6 @@ from dm_control.suite.wrappers import action_scale
 from dm_env import StepType, specs
 import gym
 
-
 class ExtendedTimeStep(NamedTuple):
 	step_type: Any
 	reward: Any

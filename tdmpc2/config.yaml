@@ -62,8 +62,8 @@ dropout: 0.01
 simnorm_dim: 8
 
 # logging
-wandb_project: test_tdmpc2
-wandb_entity: yux076-ucsd
+wandb_project: ???
+wandb_entity: ???
 wandb_silent: false
 enable_wandb: false
 save_csv: true
