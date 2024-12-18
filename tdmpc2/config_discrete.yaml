@@ -32,6 +32,7 @@ data_dir: ???
 action_mode: discrete
 critic_only: false
 early_stopping: false
+max_episode_steps: 1000
 
 # planning
 mpc: false
@@ -47,7 +48,7 @@ temperature: 0.5
 # actor
 log_std_min: -10
 log_std_max: 2
-entropy_coef: 1e-5 #5e-5 #1e-4 
+entropy_coef: 1e-5 #1e-3 #1e-5 #1e-4 #5e-5 
 
 # critic
 num_bins: 101

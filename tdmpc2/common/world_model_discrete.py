@@ -152,7 +152,6 @@ class WorldModelDiscrete(nn.Module):
 		action_probs = policy_dist.probs
 		log_probs = torch.nn.functional.log_softmax(logits, dim=-1)
 		enc_actions = F.one_hot(actions,num_classes=self.cfg.action_dim)
-		
 		return enc_actions, action_probs, log_probs
 
 	def Q(self, z, task, return_type='min', target=False, detach=False):

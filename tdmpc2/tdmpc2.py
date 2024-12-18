@@ -236,7 +236,8 @@ class TDMPC2(torch.nn.Module):
 		actions, action_probs, log_probs = self.model.pi(zs, task)
 
 		qs = self.model.Q(zs, task, return_type='avg', detach=True)
-		self.scale.update(qs[0].gather(1,actions[0].squeeze().argmax(1).unsqueeze(1)))
+		#self.scale.update(qs[0].gather(1,actions[0].squeeze().argmax(1).unsqueeze(1)))
+		self.scale.update(qs[0])
 		qs = self.scale(qs)
 
 		# Loss is a weighted sum of Q-values

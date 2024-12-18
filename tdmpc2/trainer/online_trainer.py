@@ -32,7 +32,7 @@ class OnlineTrainer(Trainer):
 			if self.cfg.save_video:
 				self.logger.video.init(self.env, enabled=(i==0))
 			while not done:
-				action = self.agent.act(obs, t0=t==0, eval_mode=True)
+				action = self.agent.act(obs, t0=t==0, eval_mode=True) #ORIGINAL
 				obs, reward, done, info = self.env.step(action)
 				#done = info['real_done'] if self.cfg.episode_life else done #from Yutao's branch
 				#ep_reward += info['raw_reward'] if self.cfg.clip_rewards else reward #from Yutao's branch
@@ -119,6 +119,7 @@ class OnlineTrainer(Trainer):
 						action = self.agent.act(obs, t0=len(self._tds)==1)
 				else:
 					action = self.agent.act(obs, t0=len(self._tds)==1)
+					#print("ACTION: ", action)
 			else:
 				action = self.env.rand_act()
 			obs, reward, done, info = self.env.step(action)

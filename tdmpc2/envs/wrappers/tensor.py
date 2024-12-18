@@ -3,6 +3,7 @@ from collections import defaultdict
 import gym
 import numpy as np
 import torch
+from ipdb import set_trace
 
 class TensorWrapper(gym.Wrapper):
 	"""
@@ -48,10 +49,15 @@ class TensorWrapper(gym.Wrapper):
 		if self.cfg.action_mode == "discrete":
 			#action = int(action.argmax())
 			#BEFORE ENC_ACTION CHANGE
+			
+			"""#ORIGINAL: redundant?
 			if not self.cfg.critic_only:
 				action = int(action[0])
 			else:
+				print("OK")
 				action = int(action)
+			"""
+			action = int(action[0])
 		else:
 			action = action.numpy()
 	

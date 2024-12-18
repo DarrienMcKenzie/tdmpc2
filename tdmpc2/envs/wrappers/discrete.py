@@ -30,9 +30,9 @@ class DiscreteWrapper(gym.Wrapper):
 		action = action.item()
 		action = [action // self.bins_per_dim ** i % self.bins_per_dim for i in range(self.continuous_dims)]
 		action = torch.tensor(action, dtype=torch.float32)
-		if action - 1 <= 0:
-			set_trace()
-		return (action - 1) / 1
+		ret = (action-1) / 1
+		ret = action
+		return ret
 
 	def step(self, action):
 		action = self._discrete_to_continuous(action)

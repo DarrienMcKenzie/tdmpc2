@@ -91,7 +91,8 @@ def make_env(cfg):
 	if cfg.get('obs', 'state') == 'rgb' and cfg.task_platform != 'atari':
 		env = PixelWrapper(cfg, env)
 	if cfg.action_mode == 'discrete':
-		env = DiscreteWrapper(env)
+		#env = DiscreteWrapper(env)
+		pass
 	try: # Dict
 		cfg.obs_shape = {k: v.shape for k, v in env.observation_space.spaces.items()}
 	except: # Box
