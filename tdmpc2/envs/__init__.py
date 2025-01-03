@@ -27,6 +27,10 @@ try:
 	from envs.myosuite import make_env as make_myosuite_env
 except:
 	make_myosuite_env = missing_dependencies
+try:
+	from envs.language import make_env as make_language_env
+except:
+	make_language_env = missing_dependencies
 
 
 warnings.filterwarnings('ignore', category=DeprecationWarning)
@@ -64,10 +68,16 @@ def make_env(cfg):
 		env = None
 		if cfg.task.startswith('discrete-'):
 			discrete = True
+			language = False
+			cfg.task = cfg.task.replace('discrete-', '')
+		elif cfg.task.startswith('language-'):
+			discrete = False #DM: temporaray...
+			language = True
 			cfg.task = cfg.task.replace('discrete-', '')
 		else:
+			language = False
 			discrete = False
-		for fn in [make_dm_control_env, make_maniskill_env, make_metaworld_env, make_myosuite_env]:
+		for fn in [make_language_env,make_dm_control_env, make_maniskill_env, make_metaworld_env, make_myosuite_env]:
 			try:
 				env = fn(cfg)
 				break

@@ -7,6 +7,7 @@ from torch.distributions.categorical import Categorical
 from tensordict.nn import TensorDictParams
 
 from common import layers, math, init
+from ipdb import set_trace #DM-TEMP
 
 
 class WorldModel(nn.Module):
@@ -112,6 +113,7 @@ class WorldModel(nn.Module):
 		"""
 		if self.cfg.multitask:
 			z = self.task_emb(z, task)
+		#set_trace()
 		z = torch.cat([z, a], dim=-1)
 		return self._dynamics(z)
 

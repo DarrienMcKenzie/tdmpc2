@@ -3,6 +3,9 @@ from collections import defaultdict
 import gym
 import numpy as np
 import torch
+import torch.nn.functional as F
+from ipdb import set_trace
+from common import math
 
 
 class TensorWrapper(gym.Wrapper):
@@ -14,7 +17,11 @@ class TensorWrapper(gym.Wrapper):
 		super().__init__(env)
 	
 	def rand_act(self):
-		return torch.from_numpy(self.action_space.sample().astype(np.float32))
+		#DM-TEMP: brute-force
+		action = torch.tensor(self.action_space.sample(), dtype=torch.int64)
+		return math.int_to_one_hot(action, self.action_space.n)
+	
+		#return torch.from_numpy(self.action_space.sample().astype(np.float32)) #original
 
 	def _try_f32_tensor(self, x):
 		x = torch.from_numpy(x)
