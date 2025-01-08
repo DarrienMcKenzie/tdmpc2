@@ -8,7 +8,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 
 #Language Environment
 class LanguageGenerationEnv:
-    def __init__(self, prompts, tokenizer, reward_model, reward_type='dense', max_context_length=10000):
+    def __init__(self, prompts, tokenizer, reward_model, reward_tokenizer, reward_type='dense', max_context_length=10000):
         self.prompts = prompts #unchanging original list of prompts
         self.prompt_queue = []
         self.tokenizer = tokenizer
@@ -19,13 +19,6 @@ class LanguageGenerationEnv:
         
         self.observation_space = gym.spaces.MultiDiscrete(self.tokenizer.vocab_size*np.ones(max_context_length))
         self.action_space = gym.spaces.Discrete(self.tokenizer.vocab_size)
-
-        #self.prompt_queue = collections.deque(random.sample(self.prompts, len(self.prompts)))
-        #self.prompt_queue = collections.deque(random.shuffle(copy.deepcopy(prompts)))
-        #self.prompt_queue = copy.deepcopy(prompts) 
-        #random.shuffle(self.prompt_queue)
-        #self.prompt_queue = collections.deque(self.prompt_queue)
-
 
     def reset(self):
         print("*RESET*") 
@@ -40,7 +33,7 @@ class LanguageGenerationEnv:
 
     def step(self, action):
         #print("*STEP*")
-        action = np.argmax(action) #temporary... ideally, policy returns action instead of user needed to argmax for every env
+        action = np.argmax(action) #DM: temporary... ideally, policy returns action instead of user needed to argmax for every env
         self.true_obs.append(action)
         self.obs = np.asarray(self.pad_obs(self.true_obs, self.max_context_length), dtype=np.float32)
         
@@ -49,9 +42,9 @@ class LanguageGenerationEnv:
         done = terminated or truncated
 
         if self.reward_type == 'dense':
-            reward = self.reward_model(self.tokenizer.decode(self.true_obs)) #DM: skip_special_tokens=True? -> investigate
+            reward = self.reward_model.generate(self.reward_tokenizer(self.tokenizer.decode(self.true_obs)).input_ids) #DM: skip_special_tokens=True? -> investigate
         elif self.reward_type == 'sparse':
-            reward = self.reward_model(self.tokenizer.decode(self.true_obs)) if done else 0
+            reward = self.reward_model.generate(self.reward_tokenizer(self.tokenizer.decode(self.true_obs)).input_ids) if done else 0
 
 
         return self.obs, reward, done, []
@@ -63,10 +56,6 @@ class LanguageGenerationEnv:
         if len(obs) >= max_length:
             return obs[:max_length]  #truncate if the list is already longer
         return obs + [padding_value] * (max_length - len(obs))
-
-    def rand_act(self):
-        action = torch.tensor(self.action_space.sample(), dtype=torch.int64)
-        return math.int_to_one_hot(action, self.action_space.n)
 
 def dummy_reward(string): #for testing purposes
     return len(string)
@@ -131,14 +120,36 @@ def llm_inference_test():
     do_sample=True   # Enables sampling instead of greedy decoding
     )
     print("Inference complete")
-
+    print("COMPLETED TEXT:\n")
     # Decode the output
     output_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
     print(output_text)
 
+
+def eval_test():
+    ds = load_dataset("openbmb/UltraFeedback")
+    prompts = ds['train']['instruction']
+
+    model = "allenai/tulu-2-7b"
+    tokenizer = AutoTokenizer.from_pretrained(model, use_fast=False)
+
+    reward_model = "openbmb/UltraRM-13b"
+    reward_tokenizer = AutoTokenizer.from_pretrained(reward_model, use_fast=False)
+
+    context_size = 2048
+    for i, prompt in enumerate(prompts):
+        print("\nPROMPT #" + str(i) + ": \n" + prompt)
+        print("\nTOKENIZATION: ", tokenizer(prompt, return_tensors="pt").input_ids)
+        print("\n\n")
+
+        if i == 1000:
+            print("***STOP***")
+            break
+
+
 def main():
     print("~~START MAIN~~")
-    llm_inference_test()
+    #llm_inference_test()
     #preference_test()
     #env_test()
     print("~~END MAIN~~")
