@@ -99,13 +99,13 @@ def preference_test():
             break
 
 def llm_inference_test():
-    device = torch.device('cuda')
+    #device = torch.device('cuda')
     model_path = "allenai/tulu-2-7b"
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
     print("Loading model...")
     model = AutoModelForCausalLM.from_pretrained(model_path)
     print("Model loaded.")
-    model.to(device)
+    #model.to(device)
     prompt = "Who was George Washington?"
 
     input_ids = tokenizer(prompt, return_tensors="pt").input_ids
@@ -138,12 +138,29 @@ def eval_test():
 
     context_size = 2048
     for i, prompt in enumerate(prompts):
-        print("\nPROMPT #" + str(i) + ": \n" + prompt)
-        print("\nTOKENIZATION: ", tokenizer(prompt, return_tensors="pt").input_ids)
-        print("\n\n")
+        input_ids = tokenizer(prompt, return_tensors="pt").input_ids
 
-        if i == 1000:
-            print("***STOP***")
+        #print("\nPROMPT #" + str(i) + ": \n" + prompt)
+        output_ids = model.generate(
+        input_ids,
+        max_length=50,  # Adjust max_length as needed
+        temperature=0.7,  # Adjust temperature for creativity
+        top_p=0.9,       # Nucleus sampling for diverse outputs
+        do_sample=True   # Enables sampling instead of greedy decoding
+        )
+        output_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
+        complete_response = "Prompt: {prompt}\nResponse: {output_text}".format(prompt, output_text)
+        #reward1 = reward_tokenizer(complete_response, return_tensors="pt").input_ids
+        reward = reward_model(reward_tokenizer(complete_response, return_tensors="pt").input_ids).logits
+
+        print("\n\nPROMPT #" + str(i) + ": " + prompt)
+        print("\n\nRESPONSE: ", output_text)
+        print("\n\nREWARD: ", reward)
+        #print("\nTOKENIZATION: ", tokenizer(prompt, return_tensors="pt").input_ids)
+        #print("\n\n")
+
+        if i == 10:
+            print("MAX OF " + str(i) + "REACHED")
             break
 
 
@@ -152,6 +169,7 @@ def main():
     #llm_inference_test()
     #preference_test()
     #env_test()
+    eval_test()
     print("~~END MAIN~~")
 
 if __name__ == "__main__":
