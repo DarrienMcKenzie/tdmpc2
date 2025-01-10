@@ -133,7 +133,7 @@ def eval_test():
     model = "allenai/tulu-2-7b"
     tokenizer = AutoTokenizer.from_pretrained(model, use_fast=False)
 
-    reward_model = "openbmb/UltraRM-13b"
+    reward_model = "jiagaoxiang/Llama-3.2-1B-Reward-full-precision"
     reward_tokenizer = AutoTokenizer.from_pretrained(reward_model, use_fast=False)
 
     context_size = 2048
@@ -143,14 +143,14 @@ def eval_test():
         #print("\nPROMPT #" + str(i) + ": \n" + prompt)
         output_ids = model.generate(
         input_ids,
-        max_length=50,  # Adjust max_length as needed
+        max_length=context_size,  # Adjust max_length as needed
         temperature=0.7,  # Adjust temperature for creativity
         top_p=0.9,       # Nucleus sampling for diverse outputs
         do_sample=True   # Enables sampling instead of greedy decoding
         )
         output_text = tokenizer.decode(output_ids[0], skip_special_tokens=True)
-        complete_response = "Prompt: {prompt}\nResponse: {output_text}".format(prompt, output_text)
-        #reward1 = reward_tokenizer(complete_response, return_tensors="pt").input_ids
+        complete_response = "Prompt: {0}\nResponse: {1}".format(prompt, output_text)
+
         reward = reward_model(reward_tokenizer(complete_response, return_tensors="pt").input_ids).logits
 
         print("\n\nPROMPT #" + str(i) + ": " + prompt)
