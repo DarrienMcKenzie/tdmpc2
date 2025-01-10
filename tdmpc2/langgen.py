@@ -130,10 +130,12 @@ def eval_test():
     ds = load_dataset("openbmb/UltraFeedback")
     prompts = ds['train']['instruction']
 
-    model = "allenai/tulu-2-7b"
+    model_path = "allenai/tulu-2-7b"
+    model = AutoModelForCausalLM.from_pretrained(model_path)
     tokenizer = AutoTokenizer.from_pretrained(model, use_fast=False)
 
-    reward_model = "jiagaoxiang/Llama-3.2-1B-Reward-full-precision"
+    reward_model_path = "jiagaoxiang/Llama-3.2-1B-Reward-full-precision"
+    reward_model = AutoModelForCausalLM.from_pretrained(reward_model_path)
     reward_tokenizer = AutoTokenizer.from_pretrained(reward_model, use_fast=False)
 
     context_size = 2048
